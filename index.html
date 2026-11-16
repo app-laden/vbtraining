@@ -197,7 +197,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.13';
+var VERSION = '0.9.14';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -213,7 +213,7 @@ var ER_R = [['S', 6], ['M', 12], ['L', 26]];
 var DEF_SET = {
   slots: [{ c: '#1a1a1a', w: 1.6 }, { c: '#1f4fd1', w: 1.6 }, { c: '#d02a2a', w: 2.6 }],
   hl: { c: '#fff176', w: 18 }, er: { mode: 'stroke', r: 12 },
-  pressure: true, sens: 0.7, finger: false, fs: 26, lines: true, coachUrl: 'https://app-laden.github.io/vbcoachingboard/'
+  pressure: true, sens: 0.7, finger: false, fs: 26, lines: true, saveMode: 'one', coachUrl: 'https://app-laden.github.io/vbcoachingboard/'
 };
 
 /* ================= DOM-Helfer ================= */
@@ -276,6 +276,7 @@ function normEx(ex) {
 function shotObj(x) { return typeof x === 'string' ? { src: x, w: 600, h: 0, strokes: [] } : x; }
 function normTr(tr) {
   tr.goals = tr.goals || [];
+  if (tr.team == null) tr.team = '';
   tr.participants.shots = (tr.participants.shots || []).map(shotObj);
   tr.blocks.forEach(function (b) { b.items.forEach(function (it) {
     normEx(it.ex);
@@ -386,10 +387,15 @@ function flush() {
   dirtyTr.forEach(function (id) { var e = DB.tr.get(id); if (e) idbPut('tr', e); }); dirtyTr.clear();
   dirtyKv.forEach(function (k) { idbPut('kv', DB.kv[k], k); }); dirtyKv.clear();
 }
-function markEx(ex) { ex.updated = Date.now(); dirtyEx.add(ex.id); setDirty(); schedule(); }
-function markTr(tr) { tr.updated = Date.now(); dirtyTr.add(tr.id); setDirty(); schedule(); }
+function markEx(ex) { ex.updated = Date.now(); dirtyEx.add(ex.id); setDirty('ex'); schedule(); }
+function markTr(tr) { tr.updated = Date.now(); dirtyTr.add(tr.id); setDirty('tr'); schedule(); }
 function markKv(k) { dirtyKv.add(k); schedule(); }
-function setDirty() { if (!DB.kv.dirty) { DB.kv.dirty = true; markKv('dirty'); updMenuDot(); } }
+function setDirty(part) {
+  var k = part === 'ex' ? 'dirtyEx' : part === 'tr' ? 'dirtyTr' : null;
+  if (k && !DB.kv[k]) { DB.kv[k] = true; markKv(k); }
+  if (!DB.kv.dirty) { DB.kv.dirty = true; markKv('dirty'); }
+  updMenuDot();
+}
 window.addEventListener('pagehide', flush);
 document.addEventListener('visibilitychange', function () { if (document.hidden) flush(); });
 function delEx(id) { DB.ex.delete(id); idbDel('ex', id); DB.kv.deleted[id] = Date.now(); markKv('deleted'); setDirty(); }
@@ -429,7 +435,7 @@ function newNote() { return { html: '', ink: { w: 600, h: 160, strokes: [] }, an
 function newBlock() { return { id: uid(), dur: null, items: [] }; }
 function newTr() {
   var last = DB.kv.last || {};
-  return { id: uid(), date: todayISO(), time: last.time || '', place: last.place || '', goals: [], participants: { names: [], shots: [], pos: zeroPos() }, blocks: [newBlock()], created: Date.now(), updated: Date.now() };
+  return { id: uid(), team: last.team || '', date: todayISO(), time: last.time || '', place: last.place || '', goals: [], participants: { names: [], shots: [], pos: zeroPos() }, blocks: [newBlock()], created: Date.now(), updated: Date.now() };
 }
 function realStroke(s) { var q = s.p, a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (var i = 0; i < q.length; i += 3) { a = Math.min(a, q[i]); c = Math.max(c, q[i]); b = Math.min(b, q[i + 1]); d = Math.max(d, q[i + 1]); } return q.length > 9 || (c - a) + (d - b) > 6; }
 function hasInk(d) { return !!(d && d.strokes && d.strokes.some(realStroke)); }
@@ -1221,7 +1227,7 @@ function render(top) {
   layoutAll(); m.scrollTop = sy; updToolbar(); updUndo();
 }
 function trSorted() { return Array.from(DB.tr.values()).sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''); }); }
-function trTitle(tr) { return fmtDate(tr.date) + (tr.time ? ', ' + tr.time : '') + (tr.place ? ' · ' + tr.place : ''); }
+function trTitle(tr) { return (tr.team ? tr.team + ' · ' : '') + fmtDate(tr.date) + (tr.time ? ', ' + tr.time : '') + (tr.place ? ' · ' + tr.place : ''); }
 function trCount(tr) { var n = 0; tr.blocks.forEach(function (b) { n += b.items.length; }); return n; }
 
 /* ----- Planen ----- */
@@ -1252,6 +1258,7 @@ function renderPlan(w) {
   dIn.addEventListener('change', function () { tr.date = dIn.value; chTr(); });
   tIn.addEventListener('change', function () { tr.time = tIn.value; DB.kv.last.time = tr.time; markKv('last'); chTr(); render(); });
   card.appendChild(h('div', { class: 'row' },
+    h('div', null, h('div', { class: 'lbl' }, 'Team (optional)'), textSuggest(tr.team, 'teams', function (v) { tr.team = v; DB.kv.last.team = v; markKv('last'); chTr(); }, 'z. B. U18', 12)),
     h('div', null, h('div', { class: 'lbl' }, 'Datum'), dIn),
     h('div', null, h('div', { class: 'lbl' }, 'Beginn'), tIn),
     h('div', { style: 'flex:1;min-width:200px' }, h('div', { class: 'lbl' }, 'Ort'), textSuggest(tr.place, 'places', function (v) { tr.place = v; DB.kv.last.place = v; markKv('last'); chTr(); }, 'Halle …', 20))));
@@ -1793,7 +1800,7 @@ async function makeTrainingPdf(tr, opt) {
     need(hh); doc.addImage(im.src, 'JPEG', M, y, w, hh); y += hh + 2;
   }
   // Kopf
-  txt('Training ' + fmtDate(tr.date) + (tr.time ? ', ' + tr.time + ' Uhr' : ''), M, y + 7, 18, 'bold'); y += 11;
+  txt('Training ' + (tr.team ? tr.team + ' – ' : '') + fmtDate(tr.date) + (tr.time ? ', ' + tr.time + ' Uhr' : ''), M, y + 7, 18, 'bold'); y += 11;
   var P = tr.participants, n = posSum(P.pos) || P.names.length;
   var meta = [tr.place, n ? n + ' Teilnehmer' + (posSum(P.pos) ? ' (' + posText(P.pos) + ')' : '') : ''].filter(Boolean).join(' · ');
   if ((tr.goals || []).length) wrapped('Ziele: ' + tr.goals.join(', '), 12, 'bold', [29, 63, 143]);
@@ -1870,7 +1877,7 @@ async function makeTrainingPdf(tr, opt) {
   var pages = doc.getNumberOfPages();
   for (var pg = 1; pg <= pages; pg++) {
     doc.setPage(pg); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(140, 140, 140);
-    doc.text(pdfSafe('Training ' + fmtDate(tr.date)), M, PH - 8);
+    doc.text(pdfSafe('Training ' + (tr.team ? tr.team + ' ' : '') + fmtDate(tr.date)), M, PH - 8);
     doc.text('Seite ' + pg + ' / ' + pages, PW - M, PH - 8, { align: 'right' });
   }
   return doc.output('blob');
@@ -1889,7 +1896,7 @@ function pdfStart(tr) {
     btn.disabled = true; msg.textContent = 'PDF wird erstellt …';
     try {
       var blob = await makeTrainingPdf(tr, o);
-      ov.remove(); pdfDialog(blob, 'Training-' + (tr.date || todayISO()) + '.pdf');
+      ov.remove(); pdfDialog(blob, 'Training-' + (tr.team ? tr.team.replace(/[^A-Za-z0-9ÄÖÜäöüß_-]+/g, '_') + '-' : '') + (tr.date || todayISO()) + '.pdf');
     } catch (e) { btn.disabled = false; msg.textContent = 'Fehler: ' + (e && e.message || e) + (navigator.onLine ? '' : ' – bitte die App einmal mit Internet öffnen.'); }
   } }, 'PDF erstellen');
   ov.appendChild(h('div', { class: 'mbox' },
@@ -1930,8 +1937,9 @@ function pdfDialog(blob, name) {
 
 /* ================= Menü: Sichern, Laden, Einstellungen, Hilfe ================= */
 function updMenuDot() {
-  var old = !DB.kv.backup || Date.now() - DB.kv.backup > 3 * 864e5;
-  $('#menuBtn').classList.toggle('dot', !!(DB.kv.dirty && old && (DB.ex.size || DB.tr.size)));
+  var stale = function (t) { return !t || Date.now() - t > 3 * 864e5; };
+  var due = (DB.kv.dirtyEx && stale(DB.kv.backupEx) && DB.ex.size) || (DB.kv.dirtyTr && stale(DB.kv.backupTr) && DB.tr.size);
+  $('#menuBtn').classList.toggle('dot', !!due);
 }
 function ago(t) { if (!t) return 'noch nie'; var d = Math.floor((Date.now() - t) / 864e5); return d <= 0 ? 'heute' : d === 1 ? 'gestern' : 'vor ' + d + ' Tagen'; }
 $('#menuBtn').onclick = function () {
@@ -1940,7 +1948,9 @@ $('#menuBtn').onclick = function () {
     p.classList.add('menu');
     p.appendChild(h('button', { onclick: function () { closePops(); exportAll(); } }, '💾 Sichern (Datei)'));
     p.appendChild(h('button', { onclick: function () { closePops(); importAll(); } }, '📂 Laden (Datei)'));
-    p.appendChild(h('div', { class: 'note', style: 'padding:0 8px 6px' }, 'Letzte Sicherung: ' + ago(DB.kv.backup) + (DB.kv.dirty ? ' · seitdem geändert' : '')));
+    p.appendChild(h('div', { class: 'note', style: 'padding:0 8px 6px' }, S.saveMode === 'split'
+      ? 'Übungen gesichert: ' + ago(DB.kv.backupEx) + (DB.kv.dirtyEx ? ' (seitdem geändert)' : '') + ' · Trainings: ' + ago(DB.kv.backupTr) + (DB.kv.dirtyTr ? ' (seitdem geändert)' : '')
+      : 'Letzte Sicherung: ' + ago(Math.min(DB.kv.backupEx || 0, DB.kv.backupTr || 0) || null) + ((DB.kv.dirtyEx || DB.kv.dirtyTr) ? ' · seitdem geändert' : '')));
     p.appendChild(h('button', { onclick: function () { closePops(); openSettings(); } }, '⚙︎ Einstellungen'));
     p.appendChild(h('button', { onclick: function () { closePops(); openLexicon(); } }, '✎ Vorschläge verwalten'));
     p.appendChild(h('button', { onclick: function () { closePops(); openHelp(); } }, '? Hilfe'));
@@ -1948,79 +1958,134 @@ $('#menuBtn').onclick = function () {
   });
 };
 var EMBED = (function () { try { return window.top !== window.self; } catch (e) { return true; } })();
-function backupData() {
-  flush();
-  var data = { app: 'vbtraining', v: 1, appVersion: VERSION, exported: new Date().toISOString(), ex: Array.from(DB.ex.values()), tr: Array.from(DB.tr.values()), lex: DB.kv.lex, deleted: DB.kv.deleted };
-  var text = JSON.stringify(data);
-  return { name: 'vbtraining-' + todayISO() + '.json', text: text, blob: new Blob([text], { type: 'application/json' }) };
+var FILE_BASE = { all: 'vbtraining-', exercises: 'vbtraining-uebungen-', trainings: 'vbtraining-trainings-' };
+var KIND_NAME = { all: 'Gesamtdatei', exercises: 'Übungsdatenbank', trainings: 'Trainings' };
+// Sicherungsdaten: kind 'all' (alles), 'exercises' (Übungen) oder 'trainings'
+function dataPart(src, kind) {
+  var d = { app: 'vbtraining', v: 1, kind: kind, appVersion: VERSION, exported: new Date().toISOString(), lex: src.lex || {}, deleted: src.deleted || {} };
+  if (kind !== 'trainings') d.ex = src.ex || [];
+  if (kind !== 'exercises') d.tr = src.tr || [];
+  return d;
 }
-function backupDone() { DB.kv.backup = Date.now(); DB.kv.dirty = false; markKv('backup'); markKv('dirty'); flush(); updMenuDot(); }
-function exportAll() {
+function fileOf(d) { var t = JSON.stringify(d); return { name: FILE_BASE[d.kind || 'all'] + todayISO() + '.json', text: t, kind: d.kind || 'all', size: t.length }; }
+function appData() { flush(); return { ex: Array.from(DB.ex.values()), tr: Array.from(DB.tr.values()), lex: DB.kv.lex, deleted: DB.kv.deleted }; }
+function backupDone(kinds) {
+  var nowT = Date.now();
+  kinds.forEach(function (k) {
+    if (k !== 'trainings') { DB.kv.backupEx = nowT; DB.kv.dirtyEx = false; markKv('backupEx'); markKv('dirtyEx'); }
+    if (k !== 'exercises') { DB.kv.backupTr = nowT; DB.kv.dirtyTr = false; markKv('backupTr'); markKv('dirtyTr'); }
+  });
+  DB.kv.dirty = !!(DB.kv.dirtyEx || DB.kv.dirtyTr); markKv('dirty'); flush(); updMenuDot();
+}
+function sizeTxt(n) { return n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB'; }
+// Dateien ausgeben: Teilen / Herunterladen / als Text kopieren. onDone(kinds) nur bei Erfolg.
+function deliverDialog(title, intro, getFiles, onDone) {
   var ov = h('div', { class: 'modal' }), msg = h('div', { class: 'note', style: 'min-height:18px;margin:8px 0;color:#9a5a00' });
   var close = function () { ov.remove(); };
   var touch = 'ontouchend' in document;
   var standalone = window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-  var b0 = backupData(), sizeTxt = b0.blob.size < 1048576 ? Math.max(1, Math.round(b0.blob.size / 1024)) + ' KB' : (b0.blob.size / 1048576).toFixed(1).replace('.', ',') + ' MB';
+  var kindsOf = function (fs) { return fs.map(function (f) { return f.kind; }); };
   var share = function () {
-    var b = backupData(), file;
-    try { file = new File([b.blob], b.name, { type: 'application/json' }); } catch (e) { msg.textContent = 'Teilen wird hier nicht unterstützt – bitte „Als Text kopieren“.'; return; }
-    if (navigator.canShare && !navigator.canShare({ files: [file] })) {
-      file = new File([b.text], b.name, { type: 'text/plain' });
-      if (!navigator.canShare({ files: [file] })) { msg.textContent = 'Dieses Gerät kann die Datei nicht teilen – bitte „Als Text kopieren“.'; return; }
-    }
-    navigator.share({ files: [file], title: b.name }).then(function () { backupDone(); close(); toast('Gesichert: ' + b.name); },
-      function (e) { if (e && e.name === 'AbortError') { msg.textContent = 'Abgebrochen – nichts gesichert.'; return; } msg.textContent = 'Teilen nicht möglich' + (EMBED ? ' (in der Vorschau gesperrt).' : ' (' + (e && e.name || 'Fehler') + ') – bitte „Als Text kopieren“.'); });
+    var fs = getFiles(), files;
+    try {
+      files = fs.map(function (f) { return new File([f.text], f.name, { type: 'application/json' }); });
+      if (navigator.canShare && !navigator.canShare({ files: files })) files = fs.map(function (f) { return new File([f.text], f.name, { type: 'text/plain' }); });
+      if (navigator.canShare && !navigator.canShare({ files: files })) { msg.textContent = 'Dieses Gerät kann die Datei(en) nicht teilen – bitte „Als Text kopieren“.'; return; }
+    } catch (e) { msg.textContent = 'Teilen wird hier nicht unterstützt.'; return; }
+    navigator.share({ files: files, title: fs.map(function (f) { return f.name; }).join(', ') }).then(function () { if (onDone) onDone(kindsOf(fs)); close(); toast('Gesichert: ' + fs.map(function (f) { return f.name; }).join(', ')); },
+      function (e) { if (e && e.name === 'AbortError') { msg.textContent = 'Abgebrochen – nichts gesichert.'; return; } msg.textContent = 'Teilen nicht möglich' + (EMBED ? ' (in der Vorschau gesperrt).' : ' (' + (e && e.name || 'Fehler') + ').'); });
   };
   var download = function () {
-    var b = backupData(), url = URL.createObjectURL(b.blob);
-    var a = h('a', { href: url, download: b.name }); document.body.appendChild(a); a.click();
-    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
-    backupDone(); close();
-    ask('„' + b.name + '“ wurde heruntergeladen. Bitte prüfen, ob die Datei angekommen ist (Mac: Download-Ordner, iPad/iPhone: Dateien-App → Downloads). Ist nichts angekommen, nochmal sichern und „Teilen“ oder „Als Text kopieren“ nutzen.', [['OK', 1, 'pri']]);
+    var fs = getFiles();
+    fs.forEach(function (f, i) {
+      setTimeout(function () {
+        var url = URL.createObjectURL(new Blob([f.text], { type: 'application/json' }));
+        var a = h('a', { href: url, download: f.name }); document.body.appendChild(a); a.click();
+        setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
+      }, i * 700);
+    });
+    if (onDone) onDone(kindsOf(fs)); close();
+    ask(fs.map(function (f) { return '„' + f.name + '“'; }).join(' und ') + ' heruntergeladen. Bitte prüfen, ob ' + (fs.length > 1 ? 'beide Dateien' : 'die Datei') + ' angekommen ' + (fs.length > 1 ? 'sind' : 'ist') + ' (Mac: Download-Ordner; Safari fragt bei zwei Dateien evtl., ob mehrere Downloads erlaubt sind).', [['OK', 1, 'pri']]);
   };
   var copyText = function () {
-    var b = backupData();
+    var fs = getFiles();
+    if (fs.length > 1) { msg.textContent = 'Als Text geht nur eine Datei auf einmal – bitte einzeln sichern.'; return; }
     if (!navigator.clipboard || !navigator.clipboard.writeText) { msg.textContent = 'Kopieren wird hier nicht unterstützt.'; return; }
-    navigator.clipboard.writeText(b.text).then(function () { backupDone(); close(); ask('Die Sicherung liegt jetzt als Text in der Zwischenablage. Füge sie in eine Notiz oder Textdatei ein und bewahre sie auf. Zum Wiederherstellen: ☰ → Laden → „Text einfügen“.', [['OK', 1, 'pri']]); },
+    navigator.clipboard.writeText(fs[0].text).then(function () { if (onDone) onDone(kindsOf(fs)); close(); ask('Liegt jetzt als Text in der Zwischenablage. In eine Notiz oder Textdatei einfügen und aufbewahren. Zurückholen: ☰ → Laden → „Text einfügen“.', [['OK', 1, 'pri']]); },
       function () { msg.textContent = 'Kopieren nicht möglich' + (EMBED ? ' (in der Vorschau gesperrt).' : '.'); });
   };
-  var box = h('div', { class: 'mbox' },
-    h('h2', { style: 'margin-top:0' }, 'Sichern'),
-    h('div', { class: 'mtxt' }, 'Eine Datei mit allem: ' + DB.ex.size + ' Übung(en), ' + DB.tr.size + ' Training(s) und den gelernten Vorschlägen (' + sizeTxt + ').'),
+  var fs0 = getFiles();
+  ov.appendChild(h('div', { class: 'mbox' },
+    h('h2', { style: 'margin-top:0' }, title),
+    h('div', { class: 'mtxt' }, intro, h('div', { class: 'note', style: 'margin-top:6px' }, fs0.map(function (f) { return f.name + ' (' + sizeTxt(f.size) + ')'; }).join(' · '))),
     EMBED ? h('div', { class: 'status warn', style: 'margin:0 0 10px' }, 'Hinweis: In der Vorschau (z. B. in Claude) sind Teilen und Herunterladen meist gesperrt. In der installierten App funktioniert es.') : null,
     h('div', { style: 'display:flex;flex-direction:column;gap:8px' },
       (navigator.share && touch) ? h('button', { class: 'btn pri', onclick: share }, '↑ Teilen / „In Dateien sichern“') : null,
       (navigator.share && touch && standalone) ? null : h('button', { class: 'btn' + (navigator.share && touch ? '' : ' pri'), onclick: download }, '⬇ Herunterladen'),
       (navigator.share && !touch) ? h('button', { class: 'btn', onclick: share }, '↑ Teilen (AirDrop, Mail …)') : null,
-      h('button', { class: 'btn', onclick: copyText }, '⧉ Als Text kopieren')),
+      fs0.length === 1 ? h('button', { class: 'btn', onclick: copyText }, '⧉ Als Text kopieren') : null),
     msg,
-    h('div', { class: 'note' }, ('ontouchend' in document) ? 'iPad/iPhone: „Teilen“ → „In Dateien sichern“ → Ordner wählen (z. B. iCloud Drive).' : 'Mac/PC: „Herunterladen“ legt die Datei ohne Nachfrage in den Download-Ordner. Von dort in den gewünschten Ordner (z. B. iCloud Drive) schieben. Wer jedes Mal den Ort wählen will: Safari → Einstellungen → Allgemein → „Speicherort für Downloads“ → „Bei jedem Download fragen“.'),
-    h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Abbrechen')));
-  ov.appendChild(box); document.body.appendChild(ov);
+    h('div', { class: 'note' }, touch ? 'iPad/iPhone: „Teilen“ → „In Dateien sichern“ → Ordner wählen (z. B. iCloud Drive).' : 'Mac/PC: „Herunterladen“ legt die Datei(en) ohne Nachfrage in den Download-Ordner. Ort jedes Mal wählen: Safari → Einstellungen → Allgemein → „Speicherort für Downloads“ → „Bei jedem Download fragen“.'),
+    h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Abbrechen'))));
+  document.body.appendChild(ov);
+}
+function exportAll() {
+  if (S.saveMode !== 'split') {
+    deliverDialog('Sichern', 'Eine Datei mit allem: ' + DB.ex.size + ' Übung(en), ' + DB.tr.size + ' Training(s) und den gelernten Vorschlägen.',
+      function () { return [fileOf(dataPart(appData(), 'all'))]; }, backupDone);
+    return;
+  }
+  // getrennt: Auswahl, was gesichert wird
+  var ov = h('div', { class: 'modal' }), close = function () { ov.remove(); };
+  var pick = function (kinds) { close(); deliverDialog('Sichern', kinds.length > 1 ? 'Zwei Dateien: Übungsdatenbank und Trainings.' : 'Datei: ' + KIND_NAME[kinds[0]] + '.',
+    function () { var d = appData(); return kinds.map(function (k) { return fileOf(dataPart(d, k)); }); }, backupDone); };
+  ov.appendChild(h('div', { class: 'mbox' },
+    h('h2', { style: 'margin-top:0' }, 'Sichern (getrennte Dateien)'),
+    h('div', { class: 'mtxt' }, 'Übungsdatenbank (' + DB.ex.size + ' Übungen) und Trainings (' + DB.tr.size + ') werden in getrennte Dateien gesichert. Umstellen: ☰ → Einstellungen → Speichern.'),
+    h('div', { style: 'display:flex;flex-direction:column;gap:8px' },
+      h('button', { class: 'btn pri', onclick: function () { pick(['exercises', 'trainings']); } }, 'Beide Dateien sichern'),
+      h('button', { class: 'btn', onclick: function () { pick(['exercises']); } }, 'Nur Übungsdatenbank' + (DB.kv.dirtyEx ? ' (geändert)' : '')),
+      h('button', { class: 'btn', onclick: function () { pick(['trainings']); } }, 'Nur Trainings' + (DB.kv.dirtyTr ? ' (geändert)' : ''))),
+    h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Abbrechen'))));
+  document.body.appendChild(ov);
+}
+async function readFiles(fs) {
+  var out = [];
+  for (var i = 0; i < fs.length; i++) {
+    try { var d = JSON.parse(await fs[i].text()); if (d && d.app === 'vbtraining') out.push(d); else toast('„' + fs[i].name + '“ ist keine VB-Training-Datei'); }
+    catch (e) { toast('„' + fs[i].name + '“ ist nicht lesbar'); }
+  }
+  return out;
 }
 function importAll() {
   var ov = h('div', { class: 'modal' }), close = function () { ov.remove(); };
   var ta = h('textarea', { placeholder: 'Gesicherten Text hier einfügen …', style: 'min-height:80px;display:none;margin-top:8px' });
   var go = h('button', { class: 'btn pri', style: 'display:none;margin-top:8px', onclick: function () {
     var data; try { data = JSON.parse(ta.value.trim()); } catch (e) { toast('Der Text ist keine gültige Sicherung'); return; }
-    close(); importData(data);
+    close(); importMany([data]);
   } }, 'Text laden');
   ov.appendChild(h('div', { class: 'mbox' },
     h('h2', { style: 'margin-top:0' }, 'Laden'),
-    h('div', { class: 'mtxt' }, 'Eine Sicherung laden. Sie ergänzt die Daten auf diesem Gerät: Neueres bleibt erhalten, Gelöschtes wird auch hier gelöscht.'),
+    h('div', { class: 'mtxt' }, 'Eine oder mehrere Sicherungen laden (Gesamtdatei, Übungsdatenbank und/oder Trainings). Sie ergänzen die Daten auf diesem Gerät: Neueres bleibt erhalten, Gelöschtes wird auch hier gelöscht.'),
     h('div', { style: 'display:flex;flex-direction:column;gap:8px' },
       h('button', { class: 'btn pri', onclick: async function () {
-        var fs = await pickFile(null); if (!fs.length) return;
-        var data; try { data = JSON.parse(await fs[0].text()); } catch (e) { toast('Datei nicht lesbar'); return; }
-        close(); importData(data);
-      } }, '📂 Datei wählen …'),
+        var fs = await pickFile(null, true); if (!fs.length) return;
+        var ds = await readFiles(fs); if (!ds.length) return;
+        close(); importMany(ds);
+      } }, '📂 Datei(en) wählen …'),
       h('button', { class: 'btn', onclick: function () { ta.style.display = 'block'; go.style.display = 'block'; ta.focus(); } }, '⧉ Text einfügen')),
     ta, go,
     h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Abbrechen'))));
   document.body.appendChild(ov);
 }
+function importMany(ds) {
+  var t = { ex: 0, tr: 0, del: 0 };
+  ds.forEach(function (d) { var r = importData(d); if (r) { t.ex += r.ex; t.tr += r.tr; t.del += r.del; } });
+  render();
+  ask('Geladen (' + ds.map(function (d) { return KIND_NAME[d.kind || 'all']; }).join(', ') + '): ' + t.ex + ' Übung(en) und ' + t.tr + ' Training(s) neu oder aktualisiert' + (t.del ? ', ' + t.del + ' gelöscht' : '') + '. Was auf diesem Gerät neuer war, blieb erhalten.', [['OK', 1, 'pri']]);
+}
 function importData(data) {
-  if (!data || data.app !== 'vbtraining') { toast('Das ist keine VB-Training-Sicherung'); return; }
+  if (!data || data.app !== 'vbtraining') { toast('Das ist keine VB-Training-Sicherung'); return null; }
   var del = data.deleted || {}, nEx = 0, nTr = 0, nDel = 0;
   Object.keys(del).forEach(function (id) {
     var t = del[id]; if (!DB.kv.deleted[id] || DB.kv.deleted[id] < t) DB.kv.deleted[id] = t;
@@ -2035,13 +2100,42 @@ function importData(data) {
     if (DB.kv.deleted[e.id] && DB.kv.deleted[e.id] >= e.updated) return;
     var c = DB.tr.get(e.id); if (!c || e.updated > c.updated) { DB.tr.set(e.id, normTr(e)); dirtyTr.add(e.id); nTr++; }
   });
-  var L = data.lex || {};
-  Object.keys(L).forEach(function (k) { DB.kv.lex[k] = DB.kv.lex[k] || {}; Object.keys(L[k]).forEach(function (w) { var a = DB.kv.lex[k][w], b = L[k][w]; DB.kv.lex[k][w] = (a < 0 || b < 0) ? -1 : Math.max(a || 0, b); }); });
+  mergeLex(DB.kv.lex, data.lex || {});
   markKv('lex'); markKv('deleted'); flush();
-  render();
-  ask('Geladen: ' + nEx + ' Übung(en) und ' + nTr + ' Training(s) neu oder aktualisiert' + (nDel ? ', ' + nDel + ' gelöscht' : '') + '. Was auf diesem Gerät neuer war, blieb erhalten.', [['OK', 1, 'pri']]);
+  return { ex: nEx, tr: nTr, del: nDel };
 }
-var LEX_KINDS = [['goals', 'Ziele'], ['tags', 'Stichworte'], ['names', 'Namen'], ['places', 'Orte'], ['fields', 'Felder']];
+function mergeLex(into, L) {
+  Object.keys(L).forEach(function (k) { into[k] = into[k] || {}; Object.keys(L[k]).forEach(function (w) { var a = into[k][w], b = L[k][w]; into[k][w] = (a < 0 || b < 0) ? -1 : Math.max(a || 0, b); }); });
+  return into;
+}
+// Dateien umwandeln (ohne die Daten in der App zu verändern)
+function mergeFileData(ds) {
+  var ex = new Map(), tr = new Map(), lex = {}, deleted = {};
+  ds.forEach(function (d) {
+    Object.keys(d.deleted || {}).forEach(function (id) { deleted[id] = Math.max(deleted[id] || 0, d.deleted[id]); });
+    (d.ex || []).forEach(function (e) { var c = ex.get(e.id); if (!c || e.updated > c.updated) ex.set(e.id, e); });
+    (d.tr || []).forEach(function (e) { var c = tr.get(e.id); if (!c || e.updated > c.updated) tr.set(e.id, e); });
+    mergeLex(lex, d.lex || {});
+  });
+  var alive = function (e) { return !(deleted[e.id] && deleted[e.id] >= e.updated); };
+  return { ex: Array.from(ex.values()).filter(alive), tr: Array.from(tr.values()).filter(alive), lex: lex, deleted: deleted };
+}
+async function convertSplit() {
+  var fs = await pickFile(null); if (!fs.length) return;
+  var ds = await readFiles(fs); if (!ds.length) return;
+  var m = mergeFileData(ds);
+  deliverDialog('Datei aufteilen', 'Aus „' + fs[0].name + '“ werden zwei Dateien: Übungsdatenbank (' + m.ex.length + ' Übungen) und Trainings (' + m.tr.length + '). Die Daten in der App bleiben unverändert.',
+    function () { return [fileOf(dataPart(m, 'exercises')), fileOf(dataPart(m, 'trainings'))]; }, null);
+}
+async function convertJoin() {
+  var fs = await pickFile(null, true); if (!fs.length) return;
+  if (fs.length < 2) { toast('Bitte beide Dateien auswählen (Übungsdatenbank und Trainings).', 4500); return; }
+  var ds = await readFiles(fs); if (ds.length < 2) return;
+  var m = mergeFileData(ds);
+  deliverDialog('Dateien zusammenführen', fs.length + ' Dateien werden zu einer Gesamtdatei: ' + m.ex.length + ' Übungen, ' + m.tr.length + ' Trainings. Bei doppelten Einträgen gilt der neuere Stand. Die Daten in der App bleiben unverändert.',
+    function () { return [fileOf(dataPart(m, 'all'))]; }, null);
+}
+var LEX_KINDS = [['teams', 'Teams'], ['goals', 'Ziele'], ['tags', 'Stichworte'], ['names', 'Namen'], ['places', 'Orte'], ['fields', 'Felder']];
 function lexUses(kind, w) {
   var n = 0, lw = w.toLowerCase();
   var inArr = function (a) { return (a || []).some(function (x) { return x.toLowerCase() === lw; }); };
@@ -2050,6 +2144,7 @@ function lexUses(kind, w) {
     if (kind === 'goals' && inArr(t.goals)) n++;
     if (kind === 'names' && inArr(t.participants.names)) n++;
     if (kind === 'places' && (t.place || '').toLowerCase() === lw) n++;
+    if (kind === 'teams' && (t.team || '').toLowerCase() === lw) n++;
     t.blocks.forEach(function (b) { b.items.forEach(function (it) {
       if ((kind === 'goals' && inArr(it.ex.goals)) || (kind === 'tags' && inArr(it.ex.tags))) n++;
       if (kind === 'fields' && (it.field || '').toLowerCase() === lw) n++;
@@ -2070,6 +2165,7 @@ function lexRename(kind, old, nw) {
     if (kind === 'goals' && fix(t.goals)) ch = true;
     if (kind === 'names' && fix(t.participants.names)) ch = true;
     if (kind === 'places' && (t.place || '').toLowerCase() === lo) { t.place = nw; ch = true; }
+    if (kind === 'teams' && (t.team || '').toLowerCase() === lo) { t.team = nw; ch = true; }
     t.blocks.forEach(function (b) { b.items.forEach(function (it) {
       if ((kind === 'goals' && fix(it.ex.goals)) | (kind === 'tags' && fix(it.ex.tags))) ch = true;
       if (kind === 'fields' && (it.field || '').toLowerCase() === lo) { it.field = nw; ch = true; }
@@ -2077,6 +2173,7 @@ function lexRename(kind, old, nw) {
     if (ch) markTr(t);
   });
   if (kind === 'places' && DB.kv.last && (DB.kv.last.place || '').toLowerCase() === lo) { DB.kv.last.place = nw; markKv('last'); }
+  if (kind === 'teams' && DB.kv.last && (DB.kv.last.team || '').toLowerCase() === lo) { DB.kv.last.team = nw; markKv('last'); }
 }
 function openLexicon() {
   var kind = 'goals', ov = h('div', { class: 'modal' }), box = h('div', { class: 'mbox', style: 'max-width:560px;max-height:90vh;display:flex;flex-direction:column' });
@@ -2141,6 +2238,13 @@ function openSettings() {
     box.appendChild(segCtl([[true, 'Liniert'], [false, 'Blanko']], S.lines !== false, function (v) { S.lines = v; saveS(); draw(); render(); }));
     var cu = h('input', { type: 'url', value: coachUrl(), style: 'width:100%', autocapitalize: 'off', spellcheck: false });
     cu.addEventListener('change', function () { S.coachUrl = cu.value.trim() || DEF_SET.coachUrl; cu.value = S.coachUrl; saveS(); });
+    box.appendChild(h('div', { class: 'lbl' }, 'Speichern (☰ → Sichern)'));
+    box.appendChild(segCtl([['one', 'Alles in einer Datei'], ['split', 'Übungen und Trainings getrennt']], S.saveMode === 'split' ? 'split' : 'one', function (v) { S.saveMode = v; saveS(); draw(); updMenuDot(); }));
+    box.appendChild(h('div', { class: 'note' }, S.saveMode === 'split' ? 'Zwei Dateien: vbtraining-uebungen-… (Übungsdatenbank) und vbtraining-trainings-… (Trainings).' : 'Eine Datei vbtraining-… mit Übungen, Trainings und Vorschlägen.'));
+    box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
+      h('button', { class: 'btn sm', onclick: function () { ov.remove(); convertSplit(); } }, 'Vorhandene Gesamtdatei aufteilen …'),
+      h('button', { class: 'btn sm', onclick: function () { ov.remove(); convertJoin(); } }, 'Zwei Dateien zusammenführen …')));
+    box.appendChild(h('div', { class: 'note' }, 'Umwandeln ändert nur Dateien, nicht die Daten in der App. Laden kann beide Dateiarten, auch mehrere auf einmal.'));
     box.appendChild(h('div', { class: 'lbl' }, 'Adresse des Coaching Boards'));
     box.appendChild(cu);
     box.appendChild(h('div', { class: 'note' }, 'Wird vom Knopf „🏐 Coaching Board“ in jeder Übung geöffnet.'));
@@ -2165,7 +2269,7 @@ function openHelp() {
     '<li>Ein <b>Block</b> hat eine Dauer; daraus werden die Uhrzeiten berechnet. In einem Block können mehrere Übungen parallel laufen (Feld angeben).</li>' +
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
-    '<li>Oben im Training stehen die <b>Ziele des Trainings</b>.</li>' +
+    '<li>Oben im Training: optional das <b>Team</b> (wird gelernt, Auswahl über ▾) und die <b>Ziele des Trainings</b>.</li>' +
     '<li>Ziele, Stichworte, Namen, Orte und Felder lernt die App. Vorschläge öffnen sich über den kleinen Pfeil <b>▾</b> als Liste; beim Tippen erscheinen passende Einträge. Vertippte oder überholte Einträge: <b>☰ → Vorschläge verwalten</b> (umbenennen – auf Wunsch überall – oder aus der Liste löschen).</li>' +
     '<li><b>Beschreibung:</b> Eine leere Übung zeigt eine Schreibfläche für den Stift. Mit „+ ⌨ Text“ bzw. „+ ✎ Handschrift“ kommt das andere Feld dazu. Felder, die leer bleiben, verschwinden beim nächsten Öffnen wieder.</li>' +
     '<li><b>Text formatieren:</b> Leiste über dem Textfeld (fett, kursiv, unterstrichen, Aufzählung, nummerierte Liste, Einzug für Unterpunkte). „- “ oder „1. “ am Zeilenanfang startet automatisch eine Liste.</li>' +
@@ -2177,7 +2281,7 @@ function openHelp() {
     '<h3>Durchführen</h3><ul><li>Das Training als Liste. Bild oder Beschreibung antippen → Vollbild. Im Vollbild: zwei Finger zoomen, doppelt tippen vergrößert bzw. zurück.</li><li>Im Vollbild eines Bildes kann man mit dem Stift (am Mac mit der Maus) <b>malen</b>. Beim Schließen fragt die App, ob die Anmerkungen als Notiz gespeichert werden. Erneutes Öffnen zeigt sie wieder zum Weitermalen. Das Bild der Übung selbst bleibt unverändert.</li><li>„+ ⌨ Notiz“ bzw. „+ ✎ Notiz“ für Anmerkungen als Text oder mit dem Stift. Leere Notizfelder verschwinden wieder. „🗑 Notiz löschen“ entfernt die ganze Notiz einer Übung.</li></ul>' +
     '<h3>PDF</h3><ul><li>„🖨 PDF“ beim Planen oder Durchführen erstellt das Training als PDF (A4) mit Bildern, Beschreibungen und auf Wunsch den Notizen.</li><li>iPad/iPhone: „Teilen“ → „Drucken“ oder „In Dateien sichern“. Mac: „Öffnen“ und dort drucken, oder „Herunterladen“.</li></ul>' +
     '<h3>Übungen</h3><ul><li>Übungen direkt für die Datenbank anlegen. Hier sind Ziel, Spieler je Position und Beschreibung Pflicht.</li><li>Suchen und nach Ziel oder Spielerzahl filtern.</li></ul>' +
-    '<h3>Sichern und auf andere Geräte bringen</h3><ul><li>Alle Daten liegen nur auf diesem Gerät. <b>☰ → Sichern</b> legt eine Datei ab (z. B. in iCloud Drive, OneDrive oder Google Drive über „In Dateien sichern“).</li>' +
+    '<h3>Sichern und auf andere Geräte bringen</h3><ul><li>☰ → Einstellungen → <b>Speichern</b>: alles in einer Datei, oder Übungsdatenbank und Trainings getrennt. Dort kann man auch eine vorhandene Gesamtdatei aufteilen oder zwei Dateien zusammenführen. Laden versteht alle Dateiarten, auch mehrere auf einmal.</li><li>Alle Daten liegen nur auf diesem Gerät. <b>☰ → Sichern</b> legt eine Datei ab (z. B. in iCloud Drive, OneDrive oder Google Drive über „In Dateien sichern“).</li>' +
     '<li>Auf dem anderen Gerät: <b>☰ → Laden</b> und die Datei wählen. Laden ergänzt: Neueres bleibt erhalten, gelöschte Einträge werden auch dort gelöscht.</li>' +
     '<li>Regelmäßig sichern! Ein Punkt am ☰ erinnert, wenn länger nicht gesichert wurde. Wird die App gelöscht, sind die Daten auf dem Gerät weg.</li></ul>' +
     '<h3>Datenschutz</h3><p>Alle Eingaben (Übungen, Trainings, Namen, Bilder) bleiben auf dem Gerät bzw. in den Dateien, die du selbst sicherst. Die App sendet nichts an einen Server. Die Seite wird bei GitHub gehostet; GitHub verarbeitet beim Aufruf technische Daten (z. B. IP-Adresse).</p>' +
@@ -2218,6 +2322,8 @@ function openHelp() {
   } catch (e) { idb = null; toast('Speicher nicht verfügbar – Eingaben gehen beim Schließen verloren.', 6000); }
   DB.kv.lex = DB.kv.lex || {}; DB.kv.last = DB.kv.last || {}; DB.kv.deleted = DB.kv.deleted || {};
   if (DB.kv.settings) S = Object.assign(clone(DEF_SET), DB.kv.settings);
+  if (DB.kv.backup && DB.kv.backupEx == null) { DB.kv.backupEx = DB.kv.backupTr = DB.kv.backup; }
+  if (DB.kv.dirtyEx == null && DB.kv.dirty) { DB.kv.dirtyEx = DB.kv.dirtyTr = true; }
   if (!S.coachUrl || /\/vbcoach\/?$/.test(S.coachUrl)) S.coachUrl = DEF_SET.coachUrl;   // alte Vorgabe-Adresse ersetzen
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   refreshPens(); updMenuDot();
