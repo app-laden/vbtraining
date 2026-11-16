@@ -173,7 +173,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.3';
+var VERSION = '0.9.4';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -404,7 +404,9 @@ function newTr() {
   var last = DB.kv.last || {};
   return { id: uid(), date: todayISO(), time: last.time || '', place: last.place || '', participants: { names: [], shots: [], pos: zeroPos() }, blocks: [newBlock()], created: Date.now(), updated: Date.now() };
 }
-function hasDesc(ex) { return !!(htmlText(ex.desc.html).trim() || ex.desc.ink.strokes.length); }
+function realStroke(s) { var q = s.p, a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (var i = 0; i < q.length; i += 3) { a = Math.min(a, q[i]); c = Math.max(c, q[i]); b = Math.min(b, q[i + 1]); d = Math.max(d, q[i + 1]); } return q.length > 9 || (c - a) + (d - b) > 6; }
+function hasInk(d) { return !!(d && d.strokes && d.strokes.some(realStroke)); }
+function hasDesc(ex) { return !!(htmlText(ex.desc.html).trim() || hasInk(ex.desc.ink)); }
 function sig(ex) { return JSON.stringify([ex.title, ex.goals, ex.tags, ex.pmode, ex.pmode === 'pos' ? ex.pos : ex.total, ex.desc.html, ex.desc.ink.strokes, ex.img]); }
 function blockTimes(tr) {
   var out = [], t = parseTime(tr.time);
@@ -656,6 +658,7 @@ function padUp() {
   var pad = I.pad, d = pad.d;
   if (I.mode === 'draw') {
     var s = I.s; if (!s.p.length) return;
+    if (I.type === 'mouse' && !realStroke(s)) return;   // versehentlicher Mausklick
     pushUndo(d, d.strokes.slice(), pad.o.onChange);
     d.strokes.push(s);
     var grown = false;
@@ -935,9 +938,9 @@ function openImage(src) { var im = imgFor(src); var go = function () { openZoom(
 
 /* ---------- Übungskarte ---------- */
 function applyW(col, ex) { col.style.flexBasis = ex.img ? (ex.img.wpct || 50) + '%' : ''; }
-function renderImageCanvas(img, extra) {
+function renderImageCanvas(img, extra, maxW) {
   var d = img.ink, im = img.src ? imgFor(img.src) : null;
-  var tw = im && im.naturalWidth ? Math.max(1000, Math.min(2400, im.naturalWidth)) : 1400, sc = tw / d.w;
+  var tw = im && im.naturalWidth ? Math.max(1000, Math.min(maxW || 2400, im.naturalWidth)) : Math.min(maxW || 1400, 1400), sc = tw / d.w;
   var c = document.createElement('canvas'); c.width = Math.round(d.w * sc); c.height = Math.round(d.h * sc);
   var x = c.getContext('2d'); x.setTransform(sc, 0, 0, sc, 0, 0);
   paintDrawing(x, d, img.bg, im && im.complete ? im : null, sc);
@@ -1010,7 +1013,7 @@ function descCol(col, ex, ch, editable, onTapView) {
   // Leere Felder bleiben nur sichtbar, solange man sie gerade benutzt (bis zum nächsten Neuaufbau der Ansicht)
   col.innerHTML = '';
   var d = ex.desc;
-  var hasT = !!htmlText(d.html).trim(), hasI = d.ink.strokes.length > 0;
+  var hasT = !!htmlText(d.html).trim(), hasI = hasInk(d.ink);
   col.appendChild(h('div', { class: 'lbl' }, 'Beschreibung', editable ? h('span', { class: 'req' }, ' *') : null));
   if (editable) {
     var showT = hasT || col._t, showI = hasI || col._i || (!hasT && !col._t);
@@ -1116,6 +1119,7 @@ function renderPlan(w) {
   w.appendChild(h('div', { class: 'row', style: 'margin-top:12px' },
     h('button', { class: 'btn', onclick: function () { go('plan', { trId: null }); } }, '← Alle Trainings'),
     h('div', { class: 'sp' }),
+    h('button', { class: 'btn', onclick: function () { pdfStart(tr); } }, '🖨 PDF'),
     h('button', { class: 'btn pri', onclick: function () { go('run', { runId: tr.id }); } }, 'Durchführen ▶')));
   // Kopf
   var card = h('div', { class: 'card' });
@@ -1248,7 +1252,7 @@ function exRow(e, onClick) {
       h('div', null, e.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), e.tags.map(function (g) { return h('span', { class: 'chip tag' }, g); })),
       htmlText(e.desc.html).trim() ? h('div', { class: 'muted', style: 'margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, htmlText(e.desc.html).trim().split('\n')[0]) : null));
   if (e.img) new Pad(th, e.img.ink, { bg: e.img.bg, img: e.img.src });
-  else if (e.desc.ink.strokes.length) new Pad(th, { w: 600, h: Math.min(e.desc.ink.h, 360), strokes: e.desc.ink.strokes }, { bg: 'lines' });
+  else if (hasInk(e.desc.ink)) new Pad(th, { w: 600, h: Math.min(e.desc.ink.h, 360), strokes: e.desc.ink.strokes }, { bg: 'lines' });
   else th.style.width = '0';
   return row;
 }
@@ -1339,6 +1343,7 @@ function renderRun(w) {
   }
   w.appendChild(h('div', { class: 'row', style: 'margin-top:12px' },
     h('button', { class: 'btn', onclick: function () { go('run', { runId: null }); } }, '← Trainings'), h('div', { class: 'sp' }),
+    h('button', { class: 'btn', onclick: function () { pdfStart(tr); } }, '🖨 PDF'),
     h('button', { class: 'btn', onclick: function () { go('plan', { trId: tr.id }); } }, '✎ Bearbeiten')));
   var P = tr.participants, n = posSum(P.pos) || P.names.length;
   var head = h('div', { class: 'card' }, h('h2', { style: 'margin:0 0 4px' }, trTitle(tr)),
@@ -1381,7 +1386,7 @@ function runItem(tr, it) {
   function drawNote() {
     nb.innerHTML = '';
     var n = it.note;
-    var hasT = !!(n && htmlText(n.html).trim()), hasI = !!(n && n.ink.strokes.length), an = n && n.annot, hasA = !!(an && an.strokes.length && ex.img);
+    var hasT = !!(n && htmlText(n.html).trim()), hasI = !!(n && hasInk(n.ink)), an = n && n.annot, hasA = !!(an && an.strokes.length && ex.img);
     var showT = hasT || nb._t, showI = hasI || nb._i;
     var add = function (which) { if (!it.note) { it.note = newNote(); markTr(tr); } if (which === 't') nb._t = nb._focus = true; else nb._i = true; drawNote(); layoutAll(); updToolbar(); };
     if (hasA || showT || showI) nb.appendChild(h('div', { class: 'lbl' }, 'Notiz'));
@@ -1508,13 +1513,246 @@ function openText(ex) {
     body.innerHTML = '';
     body.appendChild(h('h2', { style: 'margin-top:0' }, exLabel(ex)));
     if (htmlText(ex.desc.html).trim()) body.appendChild(h('div', { class: 'big rtx', style: 'font-size:' + S.fs + 'px', html: sanitize(ex.desc.html) }));
-    if (ex.desc.ink.strokes.length) { var ph = h('div', { style: 'max-width:' + Math.round(S.fs / 26 * 900) + 'px' }); body.appendChild(ph); var p = new Pad(ph, ex.desc.ink, { bg: 'lines' }); setTimeout(function () { p.layout(true); }, 0); }
+    if (hasInk(ex.desc.ink)) { var ph = h('div', { style: 'max-width:' + Math.round(S.fs / 26 * 900) + 'px' }); body.appendChild(ph); var p = new Pad(ph, ex.desc.ink, { bg: 'lines' }); setTimeout(function () { p.layout(true); }, 0); }
   }
   ov.appendChild(h('div', { class: 'vbar' },
     h('button', { onclick: function () { S.fs = Math.max(16, S.fs - 4); saveS(); draw(); } }, 'A−'),
     h('button', { onclick: function () { S.fs = Math.min(60, S.fs + 4); saveS(); draw(); } }, 'A+'),
     h('button', { onclick: function () { ov.remove(); } }, '✕')));
   ov.appendChild(body); document.body.appendChild(ov); draw();
+}
+
+
+/* ================= PDF ================= */
+function loadJsPDF() {
+  return new Promise(function (res, rej) {
+    if (window.jspdf) { res(window.jspdf.jsPDF); return; }
+    var sc = document.createElement('script'); sc.src = 'jspdf.umd.min.js';
+    sc.onload = function () { window.jspdf ? res(window.jspdf.jsPDF) : rej(new Error('PDF-Bibliothek fehlt')); };
+    sc.onerror = function () { rej(new Error('PDF-Bibliothek konnte nicht geladen werden')); };
+    document.head.appendChild(sc);
+  });
+}
+var WINANSI = [0x20AC, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x017D, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x017E, 0x0178];
+function pdfSafe(t) {
+  return String(t == null ? '' : t).replace(/→/g, '->').replace(/←/g, '<-').replace(/≥/g, '>=').replace(/≤/g, '<=').replace(/ /g, ' ')
+    .replace(/[^\u0000-ÿ]/g, function (c) { return WINANSI.indexOf(c.charCodeAt(0)) >= 0 ? c : (/[\ud800-\udfff]/.test(c) ? '' : '?'); });
+}
+function richBlocks(html) {
+  var t = document.createElement('template'); t.innerHTML = sanitize(html);
+  var blocks = [], cur = null;
+  function nb(indent, bullet) { cur = { runs: [], indent: indent, bullet: bullet || null }; blocks.push(cur); }
+  function walk(node, st, indent) {
+    Array.from(node.childNodes).forEach(function (n) {
+      if (n.nodeType === 3) { var tx = n.data.replace(/\s+/g, ' '); if (!tx.trim() && (!cur || !cur.runs.length)) return; if (!cur) nb(indent); cur.runs.push({ t: tx, b: st.b, i: st.i, u: st.u }); return; }
+      if (n.nodeType !== 1) return;
+      var tg = n.tagName.toUpperCase();
+      if (tg === 'BR') { if (!cur) nb(indent); cur = null; return; }
+      if (tg === 'B' || tg === 'STRONG') { walk(n, { b: true, i: st.i, u: st.u }, indent); return; }
+      if (tg === 'I' || tg === 'EM') { walk(n, { b: st.b, i: true, u: st.u }, indent); return; }
+      if (tg === 'U') { walk(n, { b: st.b, i: st.i, u: true }, indent); return; }
+      if (tg === 'UL' || tg === 'OL') { cur = null; listWalk(n, st, indent + 1); cur = null; return; }
+      if (tg === 'DIV' || tg === 'P' || tg === 'LI') { if (cur && cur.runs.length) cur = null; walk(n, st, indent); cur = null; return; }
+      walk(n, st, indent);
+    });
+  }
+  function listWalk(L, st, indent) {
+    var ord = L.tagName.toUpperCase() === 'OL', k = 0;
+    Array.from(L.childNodes).forEach(function (c) {
+      if (c.nodeType !== 1) return;
+      var ct = c.tagName.toUpperCase();
+      if (ct === 'LI') { k++; nb(indent, ord ? k + '.' : (indent > 1 ? '-' : '•')); walk(c, st, indent); cur = null; }
+      else if (ct === 'UL' || ct === 'OL') { cur = null; listWalk(c, st, indent + 1); cur = null; }
+    });
+  }
+  walk(t.content, { b: false, i: false, u: false }, 0);
+  return blocks;
+}
+function fontStyle(r) { return r.b && r.i ? 'bolditalic' : r.b ? 'bold' : r.i ? 'italic' : 'normal'; }
+function layoutRich(doc, blocks, width, size) {
+  var lines = [], lh = size * 1.38 * 25.4 / 72;
+  doc.setFontSize(size);
+  blocks.forEach(function (bl) {
+    var ind = bl.indent ? 6 * bl.indent : 0, maxW = width - ind, line = { ind: ind, bullet: bl.bullet, segs: [] }, x = 0;
+    var toks = [];
+    bl.runs.forEach(function (r) { pdfSafe(r.t).split(/(\s+)/).forEach(function (tk) { if (tk) toks.push({ t: tk, r: r }); }); });
+    toks.forEach(function (tk) {
+      var sp = /^\s+$/.test(tk.t);
+      if (sp && x === 0) return;
+      doc.setFont('helvetica', fontStyle(tk.r));
+      var w = doc.getTextWidth(sp ? ' ' : tk.t);
+      if (!sp && x > 0 && x + w > maxW) { lines.push(line); line = { ind: ind, bullet: null, segs: [] }; x = 0; }
+      line.segs.push({ t: sp ? ' ' : tk.t, r: tk.r, x: x, w: w }); x += w;
+    });
+    lines.push(line);
+  });
+  while (lines.length && !lines[lines.length - 1].segs.length && !lines[lines.length - 1].bullet) lines.pop();
+  return { lines: lines, lh: lh, size: size };
+}
+function drawRichLine(doc, L, line, x, y) {
+  doc.setFontSize(L.size); doc.setTextColor(30, 30, 30);
+  if (line.bullet) { doc.setFont('helvetica', 'normal'); doc.text(line.bullet, x + line.ind - 4.5, y); }
+  line.segs.forEach(function (sg) {
+    doc.setFont('helvetica', fontStyle(sg.r)); doc.text(sg.t, x + line.ind + sg.x, y);
+    if (sg.r.u && sg.t.trim()) { doc.setDrawColor(30, 30, 30); doc.setLineWidth(0.2); doc.line(x + line.ind + sg.x, y + 0.7, x + line.ind + sg.x + sg.w, y + 0.7); }
+  });
+}
+function inkUsed(d) { var m = 0; d.strokes.forEach(function (s) { m = Math.max(m, bbOf(s)[3]); }); return Math.min(d.h, Math.ceil(m + 15)); }
+function inkImage(d) {
+  var hh = inkUsed(d);
+  var c = renderImageCanvas({ ink: { w: d.w, h: hh, strokes: d.strokes }, bg: 'none', src: null }, null, 1200);
+  return { src: c.toDataURL('image/jpeg', 0.85), ar: hh / d.w };
+}
+function exImage(img, extra) { var c = renderImageCanvas(img, extra, 1600); return { src: c.toDataURL('image/jpeg', 0.85), ar: img.ink.h / img.ink.w }; }
+
+async function makeTrainingPdf(tr, opt) {
+  var jsPDF = await loadJsPDF();
+  var doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+  var PW = 210, PH = 297, M = 14, CW = PW - 2 * M, BOT = PH - M - 6, y = M;
+  function need(hh) { if (y + hh > BOT) { doc.addPage(); y = M; return true; } return false; }
+  function txt(t, x, yy, size, style, col) { doc.setFont('helvetica', style || 'normal'); doc.setFontSize(size); var c = col || [30, 30, 30]; doc.setTextColor(c[0], c[1], c[2]); doc.text(pdfSafe(t), x, yy); }
+  function wrapped(t, size, style, col, width) {
+    doc.setFont('helvetica', style || 'normal'); doc.setFontSize(size);
+    var ls = doc.splitTextToSize(pdfSafe(t), width || CW), lh = size * 1.35 * 25.4 / 72;
+    ls.forEach(function (l) { need(lh); txt(l, M, y + lh * 0.8, size, style, col); y += lh; });
+  }
+  function flowRich(L, x, width) { L.lines.forEach(function (ln) { need(L.lh); drawRichLine(doc, L, ln, x, y + L.lh * 0.78); y += L.lh; }); }
+  function flowImg(im, width) {
+    var w = width, hh = w * im.ar, maxH = BOT - M;
+    if (hh > maxH) { hh = maxH; w = hh / im.ar; }
+    need(hh); doc.addImage(im.src, 'JPEG', M, y, w, hh); y += hh + 2;
+  }
+  // Kopf
+  txt('Training ' + fmtDate(tr.date) + (tr.time ? ', ' + tr.time + ' Uhr' : ''), M, y + 7, 18, 'bold'); y += 11;
+  var P = tr.participants, n = posSum(P.pos) || P.names.length;
+  var meta = [tr.place, n ? n + ' Teilnehmer' + (posSum(P.pos) ? ' (' + posText(P.pos) + ')' : '') : ''].filter(Boolean).join(' · ');
+  if (meta) wrapped(meta, 11, 'normal', [80, 80, 80]);
+  if (P.names.length) wrapped(P.names.join(', '), 10, 'normal', [80, 80, 80]);
+  y += 3;
+  var times = blockTimes(tr);
+  tr.blocks.forEach(function (b, bi) {
+    need(16);
+    doc.setFillColor(232, 238, 251); doc.roundedRect(M, y, CW, 8, 1.5, 1.5, 'F');
+    var bt = 'Block ' + (bi + 1) + (times[bi] ? '   ' + timeLabel(times[bi]) : '') + (b.dur ? '   (' + b.dur + ' Min.)' : '') + (b.items.length > 1 ? '   ' + b.items.length + ' Übungen parallel' : '');
+    txt(bt, M + 3, y + 5.6, 11.5, 'bold', [29, 63, 143]); y += 11;
+    if (!b.items.length) { wrapped('Keine Übung', 10, 'italic', [120, 120, 120]); y += 2; }
+    b.items.forEach(function (it, ii) {
+      var ex = it.ex;
+      // Kopfzeile der Übung
+      var right = [it.field ? 'Feld ' + it.field : '', players(ex) ? players(ex) + ' Spieler' + (ex.pmode === 'pos' && posSum(ex.pos) ? ' (' + posText(ex.pos) + ')' : '') : ''].filter(Boolean).join('   ');
+      var tagsLine = ex.goals.concat(ex.tags.map(function (t) { return '#' + t; })).join(', ');
+      var headH = 7 + (tagsLine ? 5 : 0);
+      // Inhalte vorbereiten
+      var im = ex.img ? exImage(ex.img) : null;
+      var imgW = im ? CW * Math.max(0.3, Math.min(0.7, (ex.img.wpct || 50) / 100)) : 0, gap = im ? 5 : 0, TW = CW - imgW - gap;
+      var L = htmlText(ex.desc.html).trim() ? layoutRich(doc, richBlocks(ex.desc.html), TW, 10.5) : null;
+      var ink = hasInk(ex.desc.ink) ? inkImage(ex.desc.ink) : null;
+      var textH = (L ? L.lines.length * L.lh : 0) + (ink ? TW * ink.ar + (L ? 2 : 0) : 0);
+      var imgH = im ? imgW * im.ar : 0, bodyH = Math.max(textH, imgH);
+      var fits = headH + bodyH <= BOT - M;
+      need(headH + (fits ? bodyH : Math.min(bodyH, 40)));
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5);
+      var title = doc.splitTextToSize(pdfSafe(exLabel(ex)), right ? CW * 0.6 : CW)[0];
+      txt(title, M, y + 5, 12.5, 'bold');
+      if (right) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(90, 90, 90); doc.text(pdfSafe(right), M + CW, y + 5, { align: 'right' }); }
+      y += 7;
+      if (tagsLine) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); txt(doc.splitTextToSize(pdfSafe(tagsLine), CW)[0], M, y + 3, 9, 'normal', [29, 63, 143]); y += 5; }
+      y += 1;
+      if (fits) {
+        var y0 = y;
+        if (im) { doc.addImage(im.src, 'JPEG', M, y0, imgW, imgH); doc.setDrawColor(210, 210, 205); doc.setLineWidth(0.2); doc.rect(M, y0, imgW, imgH); }
+        var tx = M + imgW + gap, yy = y0;
+        if (L) L.lines.forEach(function (ln) { drawRichLine(doc, L, ln, tx, yy + L.lh * 0.78); yy += L.lh; });
+        if (ink) { if (L) yy += 2; doc.addImage(ink.src, 'JPEG', tx, yy, TW, TW * ink.ar); }
+        y = y0 + bodyH + 2;
+      } else {
+        if (im) flowImg(im, CW * 0.8);
+        if (L) { var L2 = layoutRich(doc, richBlocks(ex.desc.html), CW, 10.5); flowRich(L2, M, CW); y += 2; }
+        if (ink) flowImg(ink, CW);
+      }
+      if (!L && !ink) { wrapped('(keine Beschreibung)', 9.5, 'italic', [140, 140, 140]); }
+      // Notizen
+      var nt = it.note;
+      if (opt.notes && nt && (htmlText(nt.html).trim() || hasInk(nt.ink) || (nt.annot && nt.annot.strokes.length && ex.img))) {
+        need(8); txt('Notiz', M, y + 4, 9.5, 'bold', [154, 90, 0]); y += 6;
+        if (nt.annot && nt.annot.strokes.length && ex.img) flowImg(exImage(ex.img, nt.annot.strokes), CW * 0.55);
+        if (htmlText(nt.html).trim()) { flowRich(layoutRich(doc, richBlocks(nt.html), CW, 10), M, CW); y += 1; }
+        if (hasInk(nt.ink)) flowImg(inkImage(nt.ink), CW * 0.8);
+      }
+      y += 2;
+      if (ii < b.items.length - 1) { need(4); doc.setDrawColor(215, 215, 210); doc.setLineWidth(0.2); doc.line(M, y, M + CW, y); y += 4; }
+    });
+    y += 3;
+  });
+  if (opt.shots && P.shots.length) {
+    doc.addPage(); y = M; txt('Teilnehmer (Screenshots)', M, y + 6, 14, 'bold'); y += 10;
+    for (var i = 0; i < P.shots.length; i++) {
+      var sim = imgFor(P.shots[i]); if (!sim.complete) await new Promise(function (r) { sim._cbs.push(r); });
+      var ar = sim.naturalHeight / sim.naturalWidth || 1.3, w = Math.min(CW / 2 - 3, (BOT - M - 10) / ar), hh = w * ar;
+      if (i % 2 === 0) need(hh);
+      doc.addImage(P.shots[i], 'JPEG', M + (i % 2) * (CW / 2 + 3), y, w, hh);
+      if (i % 2 === 1 || i === P.shots.length - 1) y += hh + 4;
+    }
+  }
+  var pages = doc.getNumberOfPages();
+  for (var pg = 1; pg <= pages; pg++) {
+    doc.setPage(pg); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(140, 140, 140);
+    doc.text(pdfSafe('Training ' + fmtDate(tr.date)), M, PH - 8);
+    doc.text('Seite ' + pg + ' / ' + pages, PW - M, PH - 8, { align: 'right' });
+  }
+  return doc.output('blob');
+}
+function pdfStart(tr) {
+  flush();
+  var hasNotes = tr.blocks.some(function (b) { return b.items.some(function (it) { var n = it.note; return n && (htmlText(n.html).trim() || hasInk(n.ink) || (n.annot && n.annot.strokes.length)); }); });
+  var o = { notes: hasNotes, shots: false };
+  var ov = h('div', { class: 'modal' }), msg = h('div', { class: 'note', style: 'min-height:18px;margin-top:8px' });
+  var cb = function (key, label, dis) {
+    var inp2 = h('input', { type: 'checkbox', checked: o[key], disabled: dis, style: 'width:22px;height:22px' });
+    inp2.addEventListener('change', function () { o[key] = inp2.checked; });
+    return h('label', { style: 'display:flex;gap:10px;align-items:center;padding:6px 0' + (dis ? ';opacity:.45' : '') }, inp2, label);
+  };
+  var btn = h('button', { class: 'btn pri', onclick: async function () {
+    btn.disabled = true; msg.textContent = 'PDF wird erstellt …';
+    try {
+      var blob = await makeTrainingPdf(tr, o);
+      ov.remove(); pdfDialog(blob, 'Training-' + (tr.date || todayISO()) + '.pdf');
+    } catch (e) { btn.disabled = false; msg.textContent = 'Fehler: ' + (e && e.message || e) + (navigator.onLine ? '' : ' – bitte die App einmal mit Internet öffnen.'); }
+  } }, 'PDF erstellen');
+  ov.appendChild(h('div', { class: 'mbox' },
+    h('h2', { style: 'margin-top:0' }, 'Training als PDF'),
+    h('div', { class: 'mtxt' }, trTitle(tr)),
+    cb('notes', 'Notizen aus dem Durchführen mitdrucken', !hasNotes),
+    cb('shots', 'Teilnehmer-Screenshots anhängen', !tr.participants.shots.length),
+    msg,
+    h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: function () { ov.remove(); } }, 'Abbrechen'), btn)));
+  document.body.appendChild(ov);
+}
+function pdfDialog(blob, name) {
+  var touch = 'ontouchend' in document;
+  var standalone = window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  var ov = h('div', { class: 'modal' }), msg = h('div', { class: 'note', style: 'min-height:18px;margin:8px 0;color:#9a5a00' });
+  var close = function () { ov.remove(); };
+  var file = null; try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) {}
+  var canShare = !!(navigator.share && file && (!navigator.canShare || navigator.canShare({ files: [file] })));
+  var share = function () {
+    navigator.share({ files: [file], title: name }).then(close, function (e) { if (!(e && e.name === 'AbortError')) msg.textContent = 'Teilen nicht möglich' + (EMBED ? ' (in der Vorschau gesperrt).' : '.'); });
+  };
+  var url = URL.createObjectURL(blob);
+  var download = function () { var a = h('a', { href: url, download: name }); document.body.appendChild(a); a.click(); a.remove(); close(); toast('„' + name + '“ heruntergeladen'); };
+  var open = function () { var w = window.open(url, '_blank'); if (!w) msg.textContent = 'Öffnen wurde blockiert – bitte „Herunterladen“.'; else close(); };
+  ov.appendChild(h('div', { class: 'mbox' },
+    h('h2', { style: 'margin-top:0' }, 'PDF fertig'),
+    h('div', { class: 'mtxt' }, name + ' (' + Math.max(1, Math.round(blob.size / 1024)) + ' KB)'),
+    h('div', { style: 'display:flex;flex-direction:column;gap:8px' },
+      canShare && touch ? h('button', { class: 'btn pri', onclick: share }, '↑ Teilen – Drucken oder „In Dateien sichern“') : null,
+      !touch ? h('button', { class: 'btn pri', onclick: open }, '📄 Öffnen (zum Drucken)') : null,
+      (touch && standalone) ? null : h('button', { class: 'btn', onclick: download }, '⬇ Herunterladen'),
+      canShare && !touch ? h('button', { class: 'btn', onclick: share }, '↑ Teilen (AirDrop, Mail …)') : null),
+    msg,
+    h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Schließen'))));
+  document.body.appendChild(ov);
+  setTimeout(function () { if (!ov.isConnected) URL.revokeObjectURL(url); }, 600000);
 }
 
 /* ================= Menü: Sichern, Laden, Einstellungen, Hilfe ================= */
@@ -1671,6 +1909,7 @@ function openHelp() {
     '<li>Werkzeuge oben: drei Stifte, Textmarker, Radierer. <b>Aktives Werkzeug nochmals antippen</b> → Farbe und Stärke (Radierer: ganzer Strich oder nur Bereich).</li>' +
     '<li>Bild: Spielfeld, Halbfeld, leer, oder ein Bild einfügen. Aufstellung aus dem Coaching Board: dort „Kopieren“, hier „📋 Einfügen“ – oder dort „Export“ und hier „🖼 Foto/Datei“. Auf jedes Bild kann man malen.</li></ul>' +
     '<h3>Durchführen</h3><ul><li>Das Training als Liste. Bild oder Beschreibung antippen → Vollbild. Im Vollbild: zwei Finger zoomen, doppelt tippen vergrößert bzw. zurück.</li><li>Im Vollbild eines Bildes kann man mit dem Stift (am Mac mit der Maus) <b>malen</b>. Beim Schließen fragt die App, ob die Anmerkungen als Notiz gespeichert werden. Erneutes Öffnen zeigt sie wieder zum Weitermalen. Das Bild der Übung selbst bleibt unverändert.</li><li>„+ ⌨ Notiz“ bzw. „+ ✎ Notiz“ für Anmerkungen als Text oder mit dem Stift. Leere Notizfelder verschwinden wieder.</li></ul>' +
+    '<h3>PDF</h3><ul><li>„🖨 PDF“ beim Planen oder Durchführen erstellt das Training als PDF (A4) mit Bildern, Beschreibungen und auf Wunsch den Notizen.</li><li>iPad/iPhone: „Teilen“ → „Drucken“ oder „In Dateien sichern“. Mac: „Öffnen“ und dort drucken, oder „Herunterladen“.</li></ul>' +
     '<h3>Übungen</h3><ul><li>Übungen direkt für die Datenbank anlegen. Hier sind Ziel, Spieler je Position und Beschreibung Pflicht.</li><li>Suchen und nach Ziel oder Spielerzahl filtern.</li></ul>' +
     '<h3>Sichern und auf andere Geräte bringen</h3><ul><li>Alle Daten liegen nur auf diesem Gerät. <b>☰ → Sichern</b> legt eine Datei ab (z. B. in iCloud Drive, OneDrive oder Google Drive über „In Dateien sichern“).</li>' +
     '<li>Auf dem anderen Gerät: <b>☰ → Laden</b> und die Datei wählen. Laden ergänzt: Neueres bleibt erhalten, gelöschte Einträge werden auch dort gelöscht.</li>' +
