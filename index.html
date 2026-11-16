@@ -173,7 +173,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.1';
+var VERSION = '0.9.3';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -1007,32 +1007,35 @@ function imgCol(col, ex, ch, editable, onTapView) {
     } }, 'Bild entfernen')));
 }
 function descCol(col, ex, ch, editable, onTapView) {
+  // Leere Felder bleiben nur sichtbar, solange man sie gerade benutzt (bis zum nächsten Neuaufbau der Ansicht)
   col.innerHTML = '';
   var d = ex.desc;
-  var head = h('div', { class: 'row', style: 'justify-content:space-between' }, h('div', { class: 'lbl' }, 'Beschreibung', editable ? h('span', { class: 'req' }, ' *') : null));
-  if (editable) head.appendChild(h('div', { class: 'seg' },
-    h('button', { class: d.showInk ? 'on' : '', onclick: function () { if (d.showInk && !d.showText) return; d.showInk = !d.showInk; ch(); descCol(col, ex, ch, editable); layoutAll(); updToolbar(); } }, '✎ Handschrift'),
-    h('button', { class: d.showText ? 'on' : '', onclick: function () { if (d.showText && !d.showInk) return; d.showText = !d.showText; ch(); descCol(col, ex, ch, editable); layoutAll(); updToolbar(); } }, '⌨ Text')));
-  col.appendChild(head);
+  var hasT = !!htmlText(d.html).trim(), hasI = d.ink.strokes.length > 0;
+  col.appendChild(h('div', { class: 'lbl' }, 'Beschreibung', editable ? h('span', { class: 'req' }, ' *') : null));
   if (editable) {
-    if (d.showText) {
-      col.appendChild(richEditor(d.html, function (v) { d.html = v; ch(); }, 'Beschreibung eintippen … („- “ oder „1. “ am Zeilenanfang startet eine Liste)'));
+    var showT = hasT || col._t, showI = hasI || col._i || (!hasT && !col._t);
+    if (showT) {
+      var rt = richEditor(d.html, function (v) { d.html = v; ch(); }, 'Beschreibung eintippen … („- “ oder „1. “ am Zeilenanfang startet eine Liste)');
+      col.appendChild(rt);
+      if (col._t && !hasT && col._focus) { col._focus = false; setTimeout(function () { var e = rt.querySelector('.rte'); if (e) e.focus(); }, 0); }
     }
-    if (d.showInk) {
+    if (showI) {
       var ph = h('div', { style: 'margin-top:6px' }); col.appendChild(ph);
       var pad = new Pad(ph, d.ink, { bg: 'lines', editable: true, grow: true, onChange: ch });
-      col.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
-        h('button', { class: 'btn sm', onclick: function () { d.ink.h += 160; pad.layout(true); ch(); } }, '+ Platz'),
-        d.ink.h > 240 ? h('button', { class: 'btn sm', onclick: function () {
-          var maxY = 0; d.ink.strokes.forEach(function (s) { maxY = Math.max(maxY, bbOf(s)[3]); });
-          d.ink.h = Math.max(240, Math.ceil(maxY + 30), d.ink.h - 160); pad.layout(true); ch();
-        } }, '− Platz') : null));
     }
+    var add = function (which) { if (showI) col._i = true; if (showT) col._t = true; if (which === 't') { col._t = true; col._focus = true; } else col._i = true; descCol(col, ex, ch, editable); layoutAll(); updToolbar(); };
+    col.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
+      !showT ? h('button', { class: 'btn sm', onclick: function () { add('t'); } }, '+ ⌨ Text') : null,
+      !showI ? h('button', { class: 'btn sm', onclick: function () { add('i'); } }, '+ ✎ Handschrift') : null,
+      showI ? h('button', { class: 'btn sm', onclick: function () { d.ink.h += 160; pad.layout(true); ch(); } }, '+ Platz') : null,
+      showI && d.ink.h > 240 ? h('button', { class: 'btn sm', onclick: function () {
+        var maxY = 0; d.ink.strokes.forEach(function (st2) { maxY = Math.max(maxY, bbOf(st2)[3]); });
+        d.ink.h = Math.max(240, Math.ceil(maxY + 30), d.ink.h - 160); pad.layout(true); ch();
+      } }, '− Platz') : null));
   } else {
-    var any = false;
-    if (htmlText(d.html).trim()) { any = true; col.appendChild(h('div', { class: 'runtxt rtx', onclick: onTapView, html: sanitize(d.html) })); }
-    if (d.ink.strokes.length) { any = true; var ph2 = h('div'); col.appendChild(ph2); new Pad(ph2, d.ink, { bg: 'lines', onTap: onTapView }); }
-    if (!any) col.appendChild(h('div', { class: 'muted' }, '–'));
+    if (hasT) col.appendChild(h('div', { class: 'runtxt rtx', onclick: onTapView, html: sanitize(d.html) }));
+    if (hasI) { var ph2 = h('div'); col.appendChild(ph2); new Pad(ph2, d.ink, { bg: 'lines', onTap: onTapView }); }
+    if (!hasT && !hasI) col.appendChild(h('div', { class: 'muted' }, '–'));
   }
 }
 function exCard(ex, o) {
@@ -1377,9 +1380,11 @@ function runItem(tr, it) {
   var nb = h('div'); card.appendChild(nb);
   function drawNote() {
     nb.innerHTML = '';
-    if (!it.note) { nb.appendChild(h('button', { class: 'btn sm', style: 'margin-top:8px', onclick: function () { it.note = newNote(); markTr(tr); drawNote(); layoutAll(); updToolbar(); } }, '+ Notiz')); return; }
-    nb.appendChild(h('div', { class: 'lbl' }, 'Notiz'));
-    var an = it.note.annot;
+    var n = it.note;
+    var hasT = !!(n && htmlText(n.html).trim()), hasI = !!(n && n.ink.strokes.length), an = n && n.annot, hasA = !!(an && an.strokes.length && ex.img);
+    var showT = hasT || nb._t, showI = hasI || nb._i;
+    var add = function (which) { if (!it.note) { it.note = newNote(); markTr(tr); } if (which === 't') nb._t = nb._focus = true; else nb._i = true; drawNote(); layoutAll(); updToolbar(); };
+    if (hasA || showT || showI) nb.appendChild(h('div', { class: 'lbl' }, 'Notiz'));
     if (an && an.strokes.length && ex.img) {
       var aw = h('div', { style: 'max-width:420px;margin-bottom:8px' }); nb.appendChild(h('div', { class: 'muted', style: 'margin-bottom:4px' }, 'Anmerkungen auf dem Bild')); nb.appendChild(aw);
       new Pad(aw, { w: an.w, h: an.h, strokes: ex.img.ink.strokes.concat(an.strokes) }, { bg: ex.img.bg, img: ex.img.src, onTap: annotate });
@@ -1387,9 +1392,14 @@ function runItem(tr, it) {
         h('button', { class: 'btn sm', onclick: function () { copyImage(ex.img, an.strokes); } }, '⧉ Kopieren'),
         h('button', { class: 'btn sm warn', onclick: async function () { if (await ask('Anmerkungen auf dem Bild löschen?', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { it.note.annot = null; markTr(tr); drawNote(); layoutAll(); } } }, 'Anmerkungen löschen')));
     }
-    nb.appendChild(richEditor(it.note.html, function (v) { it.note.html = v; markTr(tr); }, 'Notiz eintippen …', 50));
-    var ph = h('div', { style: 'margin-top:6px' }); nb.appendChild(ph);
-    new Pad(ph, it.note.ink, { bg: 'lines', editable: true, grow: true, onChange: function () { markTr(tr); } });
+    if (showT) {
+      var rt = richEditor(it.note.html, function (v) { it.note.html = v; markTr(tr); }, 'Notiz eintippen …', 50); nb.appendChild(rt);
+      if (nb._focus) { nb._focus = false; setTimeout(function () { var e = rt.querySelector('.rte'); if (e) e.focus(); }, 0); }
+    }
+    if (showI) { var ph = h('div', { style: 'margin-top:6px' }); nb.appendChild(ph); new Pad(ph, it.note.ink, { bg: 'lines', editable: true, grow: true, onChange: function () { markTr(tr); } }); }
+    if (!showT || !showI) nb.appendChild(h('div', { class: 'row', style: 'margin-top:8px' },
+      !showT ? h('button', { class: 'btn sm', onclick: function () { add('t'); } }, '+ ⌨ Notiz') : null,
+      !showI ? h('button', { class: 'btn sm', onclick: function () { add('i'); } }, '+ ✎ Notiz') : null));
   }
   drawNote();
   return card;
@@ -1525,26 +1535,80 @@ $('#menuBtn').onclick = function () {
     p.appendChild(h('div', { class: 'note', style: 'padding:4px 8px 0' }, 'VB Training ' + VERSION));
   });
 };
-async function exportAll() {
+var EMBED = (function () { try { return window.top !== window.self; } catch (e) { return true; } })();
+function backupData() {
   flush();
-  var data = { app: 'vbtraining', v: 1, exported: new Date().toISOString(), ex: Array.from(DB.ex.values()), tr: Array.from(DB.tr.values()), lex: DB.kv.lex, deleted: DB.kv.deleted };
-  var name = 'vbtraining-' + todayISO() + '.json';
-  var blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-  var done = function () { DB.kv.backup = Date.now(); DB.kv.dirty = false; markKv('backup'); markKv('dirty'); updMenuDot(); };
-  try {
-    var file = new File([blob], name, { type: 'application/json' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); done(); toast('Gesichert'); return; }
-  } catch (e) { if (e && e.name === 'AbortError') return; }
-  try {
-    var a = h('a', { href: URL.createObjectURL(blob), download: name }); document.body.appendChild(a); a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 3000); done(); toast('Datei „' + name + '“ gespeichert');
-  } catch (e) { toast('Sichern ist hier nicht möglich'); }
+  var data = { app: 'vbtraining', v: 1, appVersion: VERSION, exported: new Date().toISOString(), ex: Array.from(DB.ex.values()), tr: Array.from(DB.tr.values()), lex: DB.kv.lex, deleted: DB.kv.deleted };
+  var text = JSON.stringify(data);
+  return { name: 'vbtraining-' + todayISO() + '.json', text: text, blob: new Blob([text], { type: 'application/json' }) };
 }
-async function importAll() {
-  var fs = await pickFile(null); if (!fs.length) return;
-  var data;
-  try { data = JSON.parse(await fs[0].text()); } catch (e) { toast('Datei nicht lesbar'); return; }
-  if (!data || data.app !== 'vbtraining') { toast('Das ist keine VB-Training-Datei'); return; }
+function backupDone() { DB.kv.backup = Date.now(); DB.kv.dirty = false; markKv('backup'); markKv('dirty'); flush(); updMenuDot(); }
+function exportAll() {
+  var ov = h('div', { class: 'modal' }), msg = h('div', { class: 'note', style: 'min-height:18px;margin:8px 0;color:#9a5a00' });
+  var close = function () { ov.remove(); };
+  var touch = 'ontouchend' in document;
+  var standalone = window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  var b0 = backupData(), sizeTxt = b0.blob.size < 1048576 ? Math.max(1, Math.round(b0.blob.size / 1024)) + ' KB' : (b0.blob.size / 1048576).toFixed(1).replace('.', ',') + ' MB';
+  var share = function () {
+    var b = backupData(), file;
+    try { file = new File([b.blob], b.name, { type: 'application/json' }); } catch (e) { msg.textContent = 'Teilen wird hier nicht unterstützt – bitte „Als Text kopieren“.'; return; }
+    if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+      file = new File([b.text], b.name, { type: 'text/plain' });
+      if (!navigator.canShare({ files: [file] })) { msg.textContent = 'Dieses Gerät kann die Datei nicht teilen – bitte „Als Text kopieren“.'; return; }
+    }
+    navigator.share({ files: [file], title: b.name }).then(function () { backupDone(); close(); toast('Gesichert: ' + b.name); },
+      function (e) { if (e && e.name === 'AbortError') { msg.textContent = 'Abgebrochen – nichts gesichert.'; return; } msg.textContent = 'Teilen nicht möglich' + (EMBED ? ' (in der Vorschau gesperrt).' : ' (' + (e && e.name || 'Fehler') + ') – bitte „Als Text kopieren“.'); });
+  };
+  var download = function () {
+    var b = backupData(), url = URL.createObjectURL(b.blob);
+    var a = h('a', { href: url, download: b.name }); document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
+    backupDone(); close();
+    ask('„' + b.name + '“ wurde heruntergeladen. Bitte prüfen, ob die Datei angekommen ist (Mac: Download-Ordner, iPad/iPhone: Dateien-App → Downloads). Ist nichts angekommen, nochmal sichern und „Teilen“ oder „Als Text kopieren“ nutzen.', [['OK', 1, 'pri']]);
+  };
+  var copyText = function () {
+    var b = backupData();
+    if (!navigator.clipboard || !navigator.clipboard.writeText) { msg.textContent = 'Kopieren wird hier nicht unterstützt.'; return; }
+    navigator.clipboard.writeText(b.text).then(function () { backupDone(); close(); ask('Die Sicherung liegt jetzt als Text in der Zwischenablage. Füge sie in eine Notiz oder Textdatei ein und bewahre sie auf. Zum Wiederherstellen: ☰ → Laden → „Text einfügen“.', [['OK', 1, 'pri']]); },
+      function () { msg.textContent = 'Kopieren nicht möglich' + (EMBED ? ' (in der Vorschau gesperrt).' : '.'); });
+  };
+  var box = h('div', { class: 'mbox' },
+    h('h2', { style: 'margin-top:0' }, 'Sichern'),
+    h('div', { class: 'mtxt' }, 'Eine Datei mit allem: ' + DB.ex.size + ' Übung(en), ' + DB.tr.size + ' Training(s) und den gelernten Vorschlägen (' + sizeTxt + ').'),
+    EMBED ? h('div', { class: 'status warn', style: 'margin:0 0 10px' }, 'Hinweis: In der Vorschau (z. B. in Claude) sind Teilen und Herunterladen meist gesperrt. In der installierten App funktioniert es.') : null,
+    h('div', { style: 'display:flex;flex-direction:column;gap:8px' },
+      (navigator.share && touch) ? h('button', { class: 'btn pri', onclick: share }, '↑ Teilen / „In Dateien sichern“') : null,
+      (navigator.share && touch && standalone) ? null : h('button', { class: 'btn' + (navigator.share && touch ? '' : ' pri'), onclick: download }, '⬇ Herunterladen'),
+      (navigator.share && !touch) ? h('button', { class: 'btn', onclick: share }, '↑ Teilen (AirDrop, Mail …)') : null,
+      h('button', { class: 'btn', onclick: copyText }, '⧉ Als Text kopieren')),
+    msg,
+    h('div', { class: 'note' }, ('ontouchend' in document) ? 'iPad/iPhone: „Teilen“ → „In Dateien sichern“ → Ordner wählen (z. B. iCloud Drive).' : 'Mac/PC: „Herunterladen“ legt die Datei ohne Nachfrage in den Download-Ordner. Von dort in den gewünschten Ordner (z. B. iCloud Drive) schieben. Wer jedes Mal den Ort wählen will: Safari → Einstellungen → Allgemein → „Speicherort für Downloads“ → „Bei jedem Download fragen“.'),
+    h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Abbrechen')));
+  ov.appendChild(box); document.body.appendChild(ov);
+}
+function importAll() {
+  var ov = h('div', { class: 'modal' }), close = function () { ov.remove(); };
+  var ta = h('textarea', { placeholder: 'Gesicherten Text hier einfügen …', style: 'min-height:80px;display:none;margin-top:8px' });
+  var go = h('button', { class: 'btn pri', style: 'display:none;margin-top:8px', onclick: function () {
+    var data; try { data = JSON.parse(ta.value.trim()); } catch (e) { toast('Der Text ist keine gültige Sicherung'); return; }
+    close(); importData(data);
+  } }, 'Text laden');
+  ov.appendChild(h('div', { class: 'mbox' },
+    h('h2', { style: 'margin-top:0' }, 'Laden'),
+    h('div', { class: 'mtxt' }, 'Eine Sicherung laden. Sie ergänzt die Daten auf diesem Gerät: Neueres bleibt erhalten, Gelöschtes wird auch hier gelöscht.'),
+    h('div', { style: 'display:flex;flex-direction:column;gap:8px' },
+      h('button', { class: 'btn pri', onclick: async function () {
+        var fs = await pickFile(null); if (!fs.length) return;
+        var data; try { data = JSON.parse(await fs[0].text()); } catch (e) { toast('Datei nicht lesbar'); return; }
+        close(); importData(data);
+      } }, '📂 Datei wählen …'),
+      h('button', { class: 'btn', onclick: function () { ta.style.display = 'block'; go.style.display = 'block'; ta.focus(); } }, '⧉ Text einfügen')),
+    ta, go,
+    h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Abbrechen'))));
+  document.body.appendChild(ov);
+}
+function importData(data) {
+  if (!data || data.app !== 'vbtraining') { toast('Das ist keine VB-Training-Sicherung'); return; }
   var del = data.deleted || {}, nEx = 0, nTr = 0, nDel = 0;
   Object.keys(del).forEach(function (id) {
     var t = del[id]; if (!DB.kv.deleted[id] || DB.kv.deleted[id] < t) DB.kv.deleted[id] = t;
@@ -1599,13 +1663,14 @@ function openHelp() {
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
     '<li>Ziele, Stichworte, Namen, Orte und Felder lernt die App und schlägt sie wieder vor.</li>' +
+    '<li><b>Beschreibung:</b> Eine leere Übung zeigt eine Schreibfläche für den Stift. Mit „+ ⌨ Text“ bzw. „+ ✎ Handschrift“ kommt das andere Feld dazu. Felder, die leer bleiben, verschwinden beim nächsten Öffnen wieder.</li>' +
     '<li><b>Text formatieren:</b> Leiste über dem Textfeld (fett, kursiv, unterstrichen, Aufzählung, nummerierte Liste, Einzug für Unterpunkte). „- “ oder „1. “ am Zeilenanfang startet automatisch eine Liste.</li>' +
     '<li><b>Bildgröße:</b> am blauen Punkt unten rechts am Bild ziehen. Der Text daneben bekommt den restlichen Platz.</li>' +
     '<li><b>Bild kopieren:</b> „⧉ Kopieren“ unter dem Bild (mit allen Strichen), z. B. um es in eine andere App einzufügen.</li></ul>' +
     '<h3>Schreiben mit dem Stift</h3><ul><li>Nur der Stift schreibt; Finger und Handballen scrollen nicht, solange geschrieben wird.</li>' +
     '<li>Werkzeuge oben: drei Stifte, Textmarker, Radierer. <b>Aktives Werkzeug nochmals antippen</b> → Farbe und Stärke (Radierer: ganzer Strich oder nur Bereich).</li>' +
     '<li>Bild: Spielfeld, Halbfeld, leer, oder ein Bild einfügen. Aufstellung aus dem Coaching Board: dort „Kopieren“, hier „📋 Einfügen“ – oder dort „Export“ und hier „🖼 Foto/Datei“. Auf jedes Bild kann man malen.</li></ul>' +
-    '<h3>Durchführen</h3><ul><li>Das Training als Liste. Bild oder Beschreibung antippen → Vollbild. Im Vollbild: zwei Finger zoomen, doppelt tippen vergrößert bzw. zurück.</li><li>Im Vollbild eines Bildes kann man mit dem Stift (am Mac mit der Maus) <b>malen</b>. Beim Schließen fragt die App, ob die Anmerkungen als Notiz gespeichert werden. Erneutes Öffnen zeigt sie wieder zum Weitermalen. Das Bild der Übung selbst bleibt unverändert.</li><li>„+ Notiz“ für Anmerkungen (Text oder Stift).</li></ul>' +
+    '<h3>Durchführen</h3><ul><li>Das Training als Liste. Bild oder Beschreibung antippen → Vollbild. Im Vollbild: zwei Finger zoomen, doppelt tippen vergrößert bzw. zurück.</li><li>Im Vollbild eines Bildes kann man mit dem Stift (am Mac mit der Maus) <b>malen</b>. Beim Schließen fragt die App, ob die Anmerkungen als Notiz gespeichert werden. Erneutes Öffnen zeigt sie wieder zum Weitermalen. Das Bild der Übung selbst bleibt unverändert.</li><li>„+ ⌨ Notiz“ bzw. „+ ✎ Notiz“ für Anmerkungen als Text oder mit dem Stift. Leere Notizfelder verschwinden wieder.</li></ul>' +
     '<h3>Übungen</h3><ul><li>Übungen direkt für die Datenbank anlegen. Hier sind Ziel, Spieler je Position und Beschreibung Pflicht.</li><li>Suchen und nach Ziel oder Spielerzahl filtern.</li></ul>' +
     '<h3>Sichern und auf andere Geräte bringen</h3><ul><li>Alle Daten liegen nur auf diesem Gerät. <b>☰ → Sichern</b> legt eine Datei ab (z. B. in iCloud Drive, OneDrive oder Google Drive über „In Dateien sichern“).</li>' +
     '<li>Auf dem anderen Gerät: <b>☰ → Laden</b> und die Datei wählen. Laden ergänzt: Neueres bleibt erhalten, gelöschte Einträge werden auch dort gelöscht.</li>' +
