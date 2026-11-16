@@ -197,7 +197,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.11';
+var VERSION = '0.9.13';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -213,7 +213,7 @@ var ER_R = [['S', 6], ['M', 12], ['L', 26]];
 var DEF_SET = {
   slots: [{ c: '#1a1a1a', w: 1.6 }, { c: '#1f4fd1', w: 1.6 }, { c: '#d02a2a', w: 2.6 }],
   hl: { c: '#fff176', w: 18 }, er: { mode: 'stroke', r: 12 },
-  pressure: true, sens: 0.7, finger: false, fs: 26, lines: true, coachUrl: 'https://app-laden.github.io/vbcoach/'
+  pressure: true, sens: 0.7, finger: false, fs: 26, lines: true, coachUrl: 'https://app-laden.github.io/vbcoachingboard/'
 };
 
 /* ================= DOM-Helfer ================= */
@@ -1093,7 +1093,7 @@ function copyImage(img, extra) {
 }
 function imgCol(col, ex, ch, editable, onTapView) {
   col.innerHTML = ''; applyW(col, ex);
-  col.appendChild(h('div', { class: 'lbl' }, 'Bild'));
+  if (editable) col.appendChild(h('div', { class: 'lbl' }, 'Bild'));
   if (!ex.img) {
     if (!editable) { col.appendChild(h('div', { class: 'muted' }, '–')); return; }
     var set = function (img) { ex.img = img; ch(); imgCol(col, ex, ch, editable); layoutAll(); updToolbar(); };
@@ -1133,7 +1133,7 @@ function descCol(col, ex, ch, editable, onTapView) {
   col.innerHTML = '';
   var d = ex.desc;
   var hasT = !!htmlText(d.html).trim(), hasI = hasInk(d.ink);
-  col.appendChild(h('div', { class: 'lbl' }, 'Beschreibung', editable ? h('span', { class: 'req' }, ' *') : null));
+  if (editable) col.appendChild(h('div', { class: 'lbl' }, 'Beschreibung', h('span', { class: 'req' }, ' *')));
   if (editable) {
     var showT = hasT || col._t, showI = hasI || col._i || (!hasT && !col._t);
     if (showT) {
@@ -1499,7 +1499,17 @@ function renderRun(w) {
     (tr.goals || []).length ? h('div', { style: 'margin:4px 0 6px' }, h('b', { style: 'margin-right:6px' }, 'Ziele:'), tr.goals.map(function (g) { return h('span', { class: 'chip' }, g); })) : null,
     n ? h('div', { class: 'muted' }, n + ' Teilnehmer' + (posSum(P.pos) ? ' (' + posText(P.pos) + ')' : '')) : null,
     P.names.length ? h('div', { style: 'margin-top:6px' }, P.names.map(function (x) { return h('span', { class: 'chip' }, x); })) : null,
-    P.shots.length ? h('div', { class: 'thumbs', style: 'margin-top:8px' }, P.shots.map(function (sh, i) { return shotThumb(sh, function () { openShot(tr, i, function () { render(); }); }); })) : null);
+    P.shots.length ? h('div', { class: 'shotrow' }, P.shots.map(function (sh, i) {
+      var box = h('div', { class: 'shotbox', style: 'width:' + (sh.wpct || 32) + '%' });
+      var open = function () { openShot(tr, i, function () { render(); }); };
+      if (!sh.h) {
+        box.appendChild(h('img', { src: sh.src, style: 'width:100%;display:block;border:1px solid #dcdcd5;border-radius:8px;cursor:zoom-in', onclick: open }));
+      } else {
+        var ph = h('div'); box.appendChild(ph);
+        new Pad(ph, sh, { bg: 'none', img: sh.src, onTap: open });
+      }
+      return box;
+    })) : null);
   w.appendChild(head);
   var times = blockTimes(tr);
   tr.blocks.forEach(function (b, bi) {
@@ -2208,6 +2218,7 @@ function openHelp() {
   } catch (e) { idb = null; toast('Speicher nicht verfügbar – Eingaben gehen beim Schließen verloren.', 6000); }
   DB.kv.lex = DB.kv.lex || {}; DB.kv.last = DB.kv.last || {}; DB.kv.deleted = DB.kv.deleted || {};
   if (DB.kv.settings) S = Object.assign(clone(DEF_SET), DB.kv.settings);
+  if (!S.coachUrl || /\/vbcoach\/?$/.test(S.coachUrl)) S.coachUrl = DEF_SET.coachUrl;   // alte Vorgabe-Adresse ersetzen
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   refreshPens(); updMenuDot();
   render(true);
