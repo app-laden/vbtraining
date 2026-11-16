@@ -1,5 +1,5 @@
 // VB Training – Service Worker
-const VERSION = '0.9.6';
+const VERSION = '0.9.7';
 const CACHE = 'vbtrain-' + VERSION;
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'jspdf.umd.min.js'];
 

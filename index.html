@@ -173,7 +173,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.6';
+var VERSION = '0.9.7';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -249,7 +249,9 @@ function normEx(ex) {
   if (ex.img && !ex.img.wpct) ex.img.wpct = 50;
   return ex;
 }
+function shotObj(x) { return typeof x === 'string' ? { src: x, w: 600, h: 0, strokes: [] } : x; }
 function normTr(tr) {
+  tr.participants.shots = (tr.participants.shots || []).map(shotObj);
   tr.blocks.forEach(function (b) { b.items.forEach(function (it) {
     normEx(it.ex);
     if (it.note && it.note.html == null) { it.note.html = textToHtml(it.note.text); delete it.note.text; }
@@ -934,6 +936,26 @@ document.addEventListener('paste', function (e) {
     var f = items[i].getAsFile(); if (f) { e.preventDefault(); var cb = pasteTarget.cb; pasteTarget = null; blobToImg(f).then(cb); return; }
   }
 });
+function openShot(tr, i, after) {
+  var sh = tr.participants.shots[i], im = imgFor(sh.src);
+  var go = function () {
+    var w = 600, hh = sh.h || Math.round(600 * im.naturalHeight / im.naturalWidth) || 800;
+    openZoom({ w: w, h: hh, strokes: [] }, 'none', sh.src, {
+      annot: { w: w, h: hh, strokes: clone(sh.strokes || []) },
+      saveText: 'Striche auf dem Screenshot speichern?',
+      onSave: function (an) { sh.strokes = an.strokes; sh.w = w; sh.h = hh; markTr(tr); if (after) after(); toast('Screenshot gespeichert'); }
+    });
+  };
+  if (im.complete && im.naturalWidth) go(); else im._cbs.push(go);
+}
+function shotThumb(sh, onTap, onDel) {
+  var th = h('div', { class: 'thumb', onclick: onTap });
+  if (sh.strokes && sh.strokes.length && sh.h) { var ph = h('div'); th.appendChild(ph); new Pad(ph, { w: 600, h: sh.h, strokes: sh.strokes }, { bg: 'none', img: sh.src }); ph.style.border = '0'; ph.style.borderRadius = '0'; }
+  else th.appendChild(h('img', { src: sh.src }));
+  if (sh.strokes && sh.strokes.length) th.appendChild(h('span', { style: 'position:absolute;left:3px;bottom:3px;background:rgba(0,0,0,.6);color:#fff;border-radius:6px;font-size:12px;padding:1px 5px' }, '✎'));
+  if (onDel) th.appendChild(h('button', { class: 'del', onclick: function (e) { e.stopPropagation(); onDel(); } }, '×'));
+  return th;
+}
 function openImage(src) { var im = imgFor(src); var go = function () { openZoom({ w: 600, h: Math.round(600 * im.naturalHeight / im.naturalWidth) || 400, strokes: [] }, 'none', src); }; if (im.complete) go(); else im._cbs.push(go); }
 
 /* ---------- Übungskarte ---------- */
@@ -1137,13 +1159,13 @@ function renderPlan(w) {
   var shots = h('div', { class: 'thumbs', style: 'margin-top:8px' });
   function drawShots() {
     shots.innerHTML = '';
-    P.shots.forEach(function (src, i) {
-      shots.appendChild(h('div', { class: 'thumb', onclick: function () { openImage(src); } }, h('img', { src: src }),
-        h('button', { class: 'del', onclick: async function (e) { e.stopPropagation(); if (await ask('Screenshot entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { P.shots.splice(i, 1); chTr(); drawShots(); } } }, '×')));
+    P.shots.forEach(function (sh, i) {
+      shots.appendChild(shotThumb(sh, function () { openShot(tr, i, function () { drawShots(); layoutAll(); }); },
+        async function () { if (await ask('Screenshot entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { P.shots.splice(i, 1); chTr(); drawShots(); layoutAll(); } }));
     });
     shots.appendChild(h('button', { class: 'btn ghost', style: 'height:110px', onclick: async function () {
       var fs = await pickFile('image/*', true);
-      for (var i = 0; i < fs.length; i++) { try { P.shots.push((await blobToImg(fs[i], 1400)).src); } catch (e) {} }
+      for (var i = 0; i < fs.length; i++) { try { var r0 = await blobToImg(fs[i], 1400); P.shots.push({ src: r0.src, w: 600, h: Math.round(600 * r0.h / r0.w), strokes: [] }); } catch (e) {} }
       chTr(); drawShots();
     } }, '+ Screenshot'));
   }
@@ -1349,7 +1371,7 @@ function renderRun(w) {
   var head = h('div', { class: 'card' }, h('h2', { style: 'margin:0 0 4px' }, trTitle(tr)),
     n ? h('div', { class: 'muted' }, n + ' Teilnehmer' + (posSum(P.pos) ? ' (' + posText(P.pos) + ')' : '')) : null,
     P.names.length ? h('div', { style: 'margin-top:6px' }, P.names.map(function (x) { return h('span', { class: 'chip' }, x); })) : null,
-    P.shots.length ? h('div', { class: 'thumbs', style: 'margin-top:8px' }, P.shots.map(function (src) { return h('div', { class: 'thumb', onclick: function () { openImage(src); } }, h('img', { src: src })); })) : null);
+    P.shots.length ? h('div', { class: 'thumbs', style: 'margin-top:8px' }, P.shots.map(function (sh, i) { return shotThumb(sh, function () { openShot(tr, i, function () { render(); }); }); })) : null);
   w.appendChild(head);
   var times = blockTimes(tr);
   tr.blocks.forEach(function (b, bi) {
@@ -1451,7 +1473,7 @@ function openZoom(d, bg, src, opts) {
   async function close() {
     if (inp) return;
     if (annot && JSON.stringify(annot.strokes) !== initial) {
-      var r = await ask('Anmerkungen auf dem Bild als Notiz speichern?', [['Weiter zeichnen', 0], ['Verwerfen', 1, 'warn'], ['Speichern', 2, 'pri']]);
+      var r = await ask(opts.saveText || 'Anmerkungen auf dem Bild als Notiz speichern?', [['Weiter zeichnen', 0], ['Verwerfen', 1, 'warn'], ['Speichern', 2, 'pri']]);
       if (r === 0) return;
       if (r === 2 && opts.onSave) opts.onSave(annot);
     }
@@ -1694,10 +1716,12 @@ async function makeTrainingPdf(tr, opt) {
   if (opt.shots && P.shots.length) {
     doc.addPage(); y = M; txt('Teilnehmer (Screenshots)', M, y + 6, 14, 'bold'); y += 10;
     for (var i = 0; i < P.shots.length; i++) {
-      var sim = imgFor(P.shots[i]); if (!sim.complete) await new Promise(function (r) { sim._cbs.push(r); });
+      var sh = P.shots[i], sim = imgFor(sh.src); if (!sim.complete) await new Promise(function (r) { sim._cbs.push(r); });
+      var shSrc = sh.src;
+      if (sh.strokes && sh.strokes.length && sh.h) shSrc = renderImageCanvas({ ink: { w: 600, h: sh.h, strokes: sh.strokes }, bg: 'none', src: sh.src }, null, 1400).toDataURL('image/jpeg', 0.85);
       var ar = sim.naturalHeight / sim.naturalWidth || 1.3, w = Math.min(CW / 2 - 3, (BOT - M - 10) / ar), hh = w * ar;
       if (i % 2 === 0) need(hh);
-      doc.addImage(P.shots[i], 'JPEG', M + (i % 2) * (CW / 2 + 3), y, w, hh);
+      doc.addImage(shSrc, 'JPEG', M + (i % 2) * (CW / 2 + 3), y, w, hh);
       if (i % 2 === 1 || i === P.shots.length - 1) y += hh + 4;
     }
   }
@@ -1903,7 +1927,7 @@ function openHelp() {
     '<li><b>Android:</b> Adresse in Chrome öffnen → ⋮ → „App installieren“ bzw. „Zum Startbildschirm hinzufügen“.</li>' +
     '<li><b>Mac:</b> Safari → Ablage → „Zum Dock hinzufügen“, oder Lesezeichen.</li>' +
     '<li>Die App läuft danach offline. Neue Version: App mit Internet öffnen → grüne Leiste antippen.</li></ul>' +
-    '<h3>Planen</h3><ul><li>„+ Neues Training“: Datum, Beginn, Ort, Teilnehmer (Namen oder Screenshots, z. B. aus Spond), optional Positionen.</li>' +
+    '<h3>Planen</h3><ul><li>„+ Neues Training“: Datum, Beginn, Ort, Teilnehmer (Namen oder Screenshots, z. B. aus Spond), optional Positionen. Screenshot antippen → Vollbild, dort mit dem Stift abhaken oder ergänzen; × entfernt ihn.</li>' +
     '<li>Ein <b>Block</b> hat eine Dauer; daraus werden die Uhrzeiten berechnet. In einem Block können mehrere Übungen parallel laufen (Feld angeben).</li>' +
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
