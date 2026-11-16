@@ -1,10 +1,15 @@
 // VB Training – Service Worker
-const VERSION = '0.9.4';
+const VERSION = '0.9.6';
 const CACHE = 'vbtrain-' + VERSION;
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'jspdf.umd.min.js'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
+  // cache: 'reload' umgeht den Browser-Zwischenspeicher, damit wirklich die neuen Dateien geholt werden
+  e.waitUntil(caches.open(CACHE).then(c => Promise.all(FILES.map(f =>
+    fetch(new Request(f, { cache: 'reload' })).then(r => {
+      if (!r.ok) throw new Error('Laden fehlgeschlagen: ' + f);
+      return c.put(f, r);
+    })))));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(

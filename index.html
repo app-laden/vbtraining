@@ -173,7 +173,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.4';
+var VERSION = '0.9.6';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -1389,7 +1389,14 @@ function runItem(tr, it) {
     var hasT = !!(n && htmlText(n.html).trim()), hasI = !!(n && hasInk(n.ink)), an = n && n.annot, hasA = !!(an && an.strokes.length && ex.img);
     var showT = hasT || nb._t, showI = hasI || nb._i;
     var add = function (which) { if (!it.note) { it.note = newNote(); markTr(tr); } if (which === 't') nb._t = nb._focus = true; else nb._i = true; drawNote(); layoutAll(); updToolbar(); };
-    if (hasA || showT || showI) nb.appendChild(h('div', { class: 'lbl' }, 'Notiz'));
+    if (hasA || showT || showI) nb.appendChild(h('div', { class: 'row', style: 'justify-content:space-between;margin-top:6px' },
+      h('div', { class: 'lbl', style: 'margin:0' }, 'Notiz'),
+      h('button', { class: 'btn sm warn', onclick: async function () {
+        if (!(await ask('Notiz zu „' + exLabel(ex) + '“ löschen? Text, Handschrift und Anmerkungen auf dem Bild werden entfernt.', [['Abbrechen', 0], ['Löschen', 1, 'warn']]))) return;
+        var old = it.note; it.note = null; nb._t = nb._i = nb._focus = false;
+        if (old) { UNDO = UNDO.filter(function (e) { return e.d !== old.ink; }); REDO = REDO.filter(function (e) { return e.d !== old.ink; }); updUndo(); }
+        markTr(tr); drawNote(); layoutAll(); updToolbar(); toast('Notiz gelöscht');
+      } }, '🗑 Notiz löschen')));
     if (an && an.strokes.length && ex.img) {
       var aw = h('div', { style: 'max-width:420px;margin-bottom:8px' }); nb.appendChild(h('div', { class: 'muted', style: 'margin-bottom:4px' }, 'Anmerkungen auf dem Bild')); nb.appendChild(aw);
       new Pad(aw, { w: an.w, h: an.h, strokes: ex.img.ink.strokes.concat(an.strokes) }, { bg: ex.img.bg, img: ex.img.src, onTap: annotate });
@@ -1908,7 +1915,7 @@ function openHelp() {
     '<h3>Schreiben mit dem Stift</h3><ul><li>Nur der Stift schreibt; Finger und Handballen scrollen nicht, solange geschrieben wird.</li>' +
     '<li>Werkzeuge oben: drei Stifte, Textmarker, Radierer. <b>Aktives Werkzeug nochmals antippen</b> → Farbe und Stärke (Radierer: ganzer Strich oder nur Bereich).</li>' +
     '<li>Bild: Spielfeld, Halbfeld, leer, oder ein Bild einfügen. Aufstellung aus dem Coaching Board: dort „Kopieren“, hier „📋 Einfügen“ – oder dort „Export“ und hier „🖼 Foto/Datei“. Auf jedes Bild kann man malen.</li></ul>' +
-    '<h3>Durchführen</h3><ul><li>Das Training als Liste. Bild oder Beschreibung antippen → Vollbild. Im Vollbild: zwei Finger zoomen, doppelt tippen vergrößert bzw. zurück.</li><li>Im Vollbild eines Bildes kann man mit dem Stift (am Mac mit der Maus) <b>malen</b>. Beim Schließen fragt die App, ob die Anmerkungen als Notiz gespeichert werden. Erneutes Öffnen zeigt sie wieder zum Weitermalen. Das Bild der Übung selbst bleibt unverändert.</li><li>„+ ⌨ Notiz“ bzw. „+ ✎ Notiz“ für Anmerkungen als Text oder mit dem Stift. Leere Notizfelder verschwinden wieder.</li></ul>' +
+    '<h3>Durchführen</h3><ul><li>Das Training als Liste. Bild oder Beschreibung antippen → Vollbild. Im Vollbild: zwei Finger zoomen, doppelt tippen vergrößert bzw. zurück.</li><li>Im Vollbild eines Bildes kann man mit dem Stift (am Mac mit der Maus) <b>malen</b>. Beim Schließen fragt die App, ob die Anmerkungen als Notiz gespeichert werden. Erneutes Öffnen zeigt sie wieder zum Weitermalen. Das Bild der Übung selbst bleibt unverändert.</li><li>„+ ⌨ Notiz“ bzw. „+ ✎ Notiz“ für Anmerkungen als Text oder mit dem Stift. Leere Notizfelder verschwinden wieder. „🗑 Notiz löschen“ entfernt die ganze Notiz einer Übung.</li></ul>' +
     '<h3>PDF</h3><ul><li>„🖨 PDF“ beim Planen oder Durchführen erstellt das Training als PDF (A4) mit Bildern, Beschreibungen und auf Wunsch den Notizen.</li><li>iPad/iPhone: „Teilen“ → „Drucken“ oder „In Dateien sichern“. Mac: „Öffnen“ und dort drucken, oder „Herunterladen“.</li></ul>' +
     '<h3>Übungen</h3><ul><li>Übungen direkt für die Datenbank anlegen. Hier sind Ziel, Spieler je Position und Beschreibung Pflicht.</li><li>Suchen und nach Ziel oder Spielerzahl filtern.</li></ul>' +
     '<h3>Sichern und auf andere Geräte bringen</h3><ul><li>Alle Daten liegen nur auf diesem Gerät. <b>☰ → Sichern</b> legt eine Datei ab (z. B. in iCloud Drive, OneDrive oder Google Drive über „In Dateien sichern“).</li>' +
@@ -1922,9 +1929,13 @@ function openHelp() {
 
 /* ================= Aktualisierung (Service Worker) ================= */
 (function () {
-  if (!('serviceWorker' in navigator) || location.protocol !== 'https:') return;
+  if (!('serviceWorker' in navigator) || (location.protocol !== 'https:' && location.hostname !== 'localhost')) return;
   try {
-    navigator.serviceWorker.register('sw.js').then(function (reg) {
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+      var lastCheck = Date.now();
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && Date.now() - lastCheck > 60000) { lastCheck = Date.now(); try { reg.update(); } catch (e) {} }
+      });
       var show = function () { var b = $('#upd'); b.style.display = 'block'; b.onclick = function () { if (reg.waiting) reg.waiting.postMessage('skip'); }; };
       if (reg.waiting && navigator.serviceWorker.controller) show();
       reg.addEventListener('updatefound', function () {
