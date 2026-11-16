@@ -60,6 +60,15 @@ h2{font-size:20px;margin:16px 0 8px}
 .chipin input{border:0;padding:6px 4px;min-width:120px;outline:none;background:transparent}
 .chipbox{border:1px solid #d3d3cc;border-radius:10px;padding:3px 6px;background:#fff;display:flex;flex-wrap:wrap;align-items:center}
 .sugs{margin-top:4px}
+.ddwrap{position:relative}
+.ddarr{border:0;background:#ececea;border-radius:8px;width:38px;height:34px;font-size:16px;color:#444;margin-left:auto;flex:none;padding:0}
+.ddarr.ddin{position:absolute;right:3px;top:50%;transform:translateY(-50%);height:30px;width:32px}
+.dd{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:35;background:#fff;border:1px solid #d3d3cc;border-radius:12px;box-shadow:0 8px 26px rgba(0,0,0,.18);max-height:300px;overflow-y:auto;-webkit-overflow-scrolling:touch;min-width:200px}
+.dd button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid #f0f0ec;background:transparent;padding:12px 14px;font-size:16px}
+.dd button:last-child{border-bottom:0}
+.dd button:active{background:#e8eefb}
+.ddempty{padding:12px 14px;color:#888;font-size:14px}
+.runempty{flex:0 0 38%!important}
 .pos{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .pc{display:flex;align-items:center;background:#f1f1ec;border-radius:10px;padding:2px}
 .pc b{min-width:30px;text-align:center;font-size:13px;color:#555}
@@ -71,7 +80,7 @@ h2{font-size:20px;margin:16px 0 8px}
 .seg button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18)}
 .cols{display:flex;gap:14px;align-items:flex-start}
 .cols>div{flex:1;min-width:0}
-@media (max-width:720px){.cols{flex-direction:column}.cols>div{width:100%}.cols>.ci,.cols>.cd{flex:none!important}.rsz,.split{display:none!important}.shotbox{width:100%!important}}
+@media (max-width:720px){.runempty{display:none}.cols{flex-direction:column}.cols>div{width:100%}.cols>.ci,.cols>.cd{flex:none!important}.rsz,.split{display:none!important}.shotbox{width:100%!important}}
 .pad{position:relative;border:1px solid #dcdcd5;border-radius:8px;overflow:hidden;background:#fff;touch-action:pan-y;width:100%}
 .pad.finger{touch-action:none}
 .pad canvas{position:absolute;left:0;top:0;pointer-events:none}
@@ -188,7 +197,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.8';
+var VERSION = '0.9.11';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -204,7 +213,7 @@ var ER_R = [['S', 6], ['M', 12], ['L', 26]];
 var DEF_SET = {
   slots: [{ c: '#1a1a1a', w: 1.6 }, { c: '#1f4fd1', w: 1.6 }, { c: '#d02a2a', w: 2.6 }],
   hl: { c: '#fff176', w: 18 }, er: { mode: 'stroke', r: 12 },
-  pressure: true, sens: 0.7, finger: false, fs: 26, lines: true
+  pressure: true, sens: 0.7, finger: false, fs: 26, lines: true, coachUrl: 'https://app-laden.github.io/vbcoach/'
 };
 
 /* ================= DOM-Helfer ================= */
@@ -266,6 +275,7 @@ function normEx(ex) {
 }
 function shotObj(x) { return typeof x === 'string' ? { src: x, w: 600, h: 0, strokes: [] } : x; }
 function normTr(tr) {
+  tr.goals = tr.goals || [];
   tr.participants.shots = (tr.participants.shots || []).map(shotObj);
   tr.blocks.forEach(function (b) { b.items.forEach(function (it) {
     normEx(it.ex);
@@ -384,13 +394,13 @@ window.addEventListener('pagehide', flush);
 document.addEventListener('visibilitychange', function () { if (document.hidden) flush(); });
 function delEx(id) { DB.ex.delete(id); idbDel('ex', id); DB.kv.deleted[id] = Date.now(); markKv('deleted'); setDirty(); }
 function delTr(id) { DB.tr.delete(id); idbDel('tr', id); DB.kv.deleted[id] = Date.now(); markKv('deleted'); setDirty(); }
-function learn(kind, v) { v = String(v).trim(); if (!v) return; var L = DB.kv.lex; L[kind] = L[kind] || {}; L[kind][v] = (L[kind][v] || 0) + 1; markKv('lex'); }
+function learn(kind, v) { v = String(v).trim(); if (!v) return; var L = DB.kv.lex; L[kind] = L[kind] || {}; L[kind][v] = Math.max(0, L[kind][v] || 0) + 1; markKv('lex'); }
 function suggest(kind, exclude, q, n) {
   var L = DB.kv.lex[kind] || {}, words = Object.keys(L);
   if (kind === 'goals') GOAL_SEED.forEach(function (g) { if (!(g in L)) words.push(g); });
   q = (q || '').trim().toLowerCase();
   var ex = (exclude || []).map(function (x) { return x.toLowerCase(); });
-  return words.filter(function (w) { return ex.indexOf(w.toLowerCase()) < 0 && (!q || w.toLowerCase().indexOf(q) >= 0); })
+  return words.filter(function (w) { return !(L[w] < 0) && ex.indexOf(w.toLowerCase()) < 0 && (!q || w.toLowerCase().indexOf(q) >= 0); })
     .sort(function (a, b) {
       var sa = q && a.toLowerCase().indexOf(q) === 0 ? 1 : 0, sb = q && b.toLowerCase().indexOf(q) === 0 ? 1 : 0;
       if (sa !== sb) return sb - sa;
@@ -419,10 +429,16 @@ function newNote() { return { html: '', ink: { w: 600, h: 160, strokes: [] }, an
 function newBlock() { return { id: uid(), dur: null, items: [] }; }
 function newTr() {
   var last = DB.kv.last || {};
-  return { id: uid(), date: todayISO(), time: last.time || '', place: last.place || '', participants: { names: [], shots: [], pos: zeroPos() }, blocks: [newBlock()], created: Date.now(), updated: Date.now() };
+  return { id: uid(), date: todayISO(), time: last.time || '', place: last.place || '', goals: [], participants: { names: [], shots: [], pos: zeroPos() }, blocks: [newBlock()], created: Date.now(), updated: Date.now() };
 }
 function realStroke(s) { var q = s.p, a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (var i = 0; i < q.length; i += 3) { a = Math.min(a, q[i]); c = Math.max(c, q[i]); b = Math.min(b, q[i + 1]); d = Math.max(d, q[i + 1]); } return q.length > 9 || (c - a) + (d - b) > 6; }
 function hasInk(d) { return !!(d && d.strokes && d.strokes.some(realStroke)); }
+function coachUrl() { return (S.coachUrl || DEF_SET.coachUrl).trim(); }
+function coachLink(label) {
+  // normaler Link: öffnet das Coaching Board (in der Home-Bildschirm-App als eingeblendetes Safari-Fenster, mit „Fertig“ zurück)
+  return h('a', { class: 'btn sm', href: coachUrl(), target: '_blank', rel: 'noopener', style: 'text-decoration:none;display:inline-block',
+    onclick: function () { setTimeout(function () { toast('Im Coaching Board „Kopieren“, dann hier „📋 Einfügen“', 5000); }, 300); } }, label || '🏐 Coaching Board');
+}
 function lineBg() { return S.lines === false ? 'none' : 'lines'; }
 function addGrip(parent, pad, d, onChange, minH) {
   // Ziehleiste unter einer Schreibfläche: Höhe verändern
@@ -894,48 +910,67 @@ document.querySelectorAll('[data-tool]').forEach(function (b) {
 });
 
 /* ================= Bausteine ================= */
+/* Vorschläge als Klappliste (kleiner Pfeil ▾) */
+var openDD = null;
+document.addEventListener('pointerdown', function (e) { if (openDD && !openDD.wrap.contains(e.target)) openDD.close(); }, true);
+function ddList(wrap, items, onPick, emptyTxt) {
+  if (openDD && openDD.wrap !== wrap) openDD.close();
+  var dd = wrap.querySelector(':scope > .dd');
+  if (!dd) { dd = h('div', { class: 'dd' }); wrap.appendChild(dd); }
+  dd.innerHTML = '';
+  if (!items.length) dd.appendChild(h('div', { class: 'ddempty' }, emptyTxt || 'Keine Vorschläge – einfach eintippen'));
+  items.forEach(function (w) { dd.appendChild(h('button', { onpointerdown: function (e) { e.preventDefault(); }, onclick: function () { onPick(w); } }, w)); });
+  var close = function () { var x = wrap.querySelector(':scope > .dd'); if (x) x.remove(); if (openDD && openDD.wrap === wrap) openDD = null; };
+  openDD = { wrap: wrap, close: close };
+  return close;
+}
+function ddIsOpen(wrap) { return !!wrap.querySelector(':scope > .dd'); }
 function chipInput(arr, kind, onChange, opts) {
   opts = opts || {};
-  var box = h('div'), inEl;
-  function addV(v) {
+  var wrap = h('div', { class: 'ddwrap' }), inEl;
+  function addV(v, keepOpen) {
     v = String(v).trim().replace(/,$/, ''); if (!v) return;
     if (arr.some(function (x) { return x.toLowerCase() === v.toLowerCase(); })) return;
-    arr.push(v); learn(kind, v); onChange(); draw(true);
+    arr.push(v); learn(kind, v); onChange(); draw(); if (keepOpen) openList(false);
+  }
+  function openList(typing) {
+    var q = typing ? inEl.value : '';
+    var list = suggest(kind, arr, q, 60);
+    if (typing && (!q.trim() || !list.length)) { if (openDD && openDD.wrap === wrap) openDD.close(); return; }
+    ddList(wrap, list, function (w) { inEl.value = ''; addV(w, true); }, arr.length ? 'Keine weiteren Vorschläge – einfach eintippen' : null);
   }
   function draw(focus) {
-    box.innerHTML = '';
+    if (openDD && openDD.wrap === wrap) openDD.close();
+    wrap.innerHTML = '';
     inEl = h('input', { type: 'text', placeholder: opts.ph || 'Eingeben …', enterKeyHint: 'done', autocapitalize: 'sentences' });
-    inEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addV(inEl.value); } });
-    inEl.addEventListener('input', function () { if (/,/.test(inEl.value)) { addV(inEl.value.replace(/,/g, '')); } else drawSugs(); });
+    inEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addV(inEl.value); } else if (e.key === 'Escape' && openDD) openDD.close(); });
+    inEl.addEventListener('input', function () { if (/,/.test(inEl.value)) addV(inEl.value.replace(/,/g, '')); else openList(true); });
     inEl.addEventListener('blur', function () { if (inEl.value.trim()) addV(inEl.value); });
-    box.appendChild(h('div', { class: 'chipbox chipin' }, arr.map(function (v, i) {
+    var arrow = h('button', { class: 'ddarr', title: 'Vorschläge', onpointerdown: function (e) { e.preventDefault(); },
+      onclick: function () { if (ddIsOpen(wrap)) openDD.close(); else openList(false); } }, '▾');
+    wrap.appendChild(h('div', { class: 'chipbox chipin' }, arr.map(function (v, i) {
       return h('button', { class: 'chip' + (kind === 'tags' ? ' tag' : ''), onclick: function () { arr.splice(i, 1); onChange(); draw(); } }, v, h('span', { class: 'x' }, '×'));
-    }), inEl));
-    box.appendChild(sugEl = h('div', { class: 'sugs' })); drawSugs();
+    }), inEl, arrow));
     if (focus) inEl.focus();
   }
-  var sugEl;
-  function drawSugs() {
-    sugEl.innerHTML = '';
-    suggest(kind, arr, inEl.value, opts.n || 10).forEach(function (w) {
-      sugEl.appendChild(h('button', { class: 'chip sug', onpointerdown: function (e) { e.preventDefault(); }, onclick: function () { inEl.value = ''; addV(w); } }, w));
-    });
-  }
   draw();
-  return box;
+  return wrap;
 }
 function textSuggest(val, kind, onSet, ph, size) {
-  var wrap = h('div'), inEl = h('input', { type: 'text', value: val || '', placeholder: ph || '', size: size || 14 });
-  var sg = h('div', { class: 'sugs' });
-  function ds() {
-    sg.innerHTML = '';
-    suggest(kind, [inEl.value], inEl.value, 6).forEach(function (w) {
-      sg.appendChild(h('button', { class: 'chip sug', onpointerdown: function (e) { e.preventDefault(); }, onclick: function () { inEl.value = w; onSet(w); ds(); } }, w));
-    });
-  }
-  inEl.addEventListener('input', function () { onSet(inEl.value); ds(); });
+  var wrap = h('div', { class: 'ddwrap', style: 'display:inline-block' });
+  var inEl = h('input', { type: 'text', value: val || '', placeholder: ph || '', size: size || 14, style: 'padding-right:38px' });
+  var pick = function (w) { inEl.value = w; onSet(w); learn(kind, w); if (openDD) openDD.close(); };
+  var open = function (typing) {
+    var q = typing ? inEl.value : '';
+    var list = suggest(kind, [], q, 40).filter(function (w) { return w !== inEl.value; });
+    if (typing && (!q.trim() || !list.length)) { if (openDD && openDD.wrap === wrap) openDD.close(); return; }
+    ddList(wrap, list, pick);
+  };
+  inEl.addEventListener('input', function () { onSet(inEl.value); open(true); });
   inEl.addEventListener('change', function () { if (inEl.value.trim()) learn(kind, inEl.value.trim()); });
-  wrap.appendChild(inEl); wrap.appendChild(sg); ds();
+  var arrow = h('button', { class: 'ddarr ddin', title: 'Vorschläge', onpointerdown: function (e) { e.preventDefault(); },
+    onclick: function () { if (ddIsOpen(wrap)) openDD.close(); else open(false); } }, '▾');
+  wrap.appendChild(inEl); wrap.appendChild(arrow);
   return wrap;
 }
 function posEditor(o, onChange, opts) {
@@ -1075,8 +1110,9 @@ function imgCol(col, ex, ch, editable, onTapView) {
       h('button', { class: 'btn sm', onclick: async function () {
         var f = await pickFile('image/*'); if (!f.length) return;
         try { fromImg(await blobToImg(f[0])); } catch (e) { toast('Bild konnte nicht gelesen werden'); }
-      } }, '🖼 Foto/Datei')));
-    col.appendChild(h('div', { class: 'note' }, 'Aufstellung aus dem Coaching Board: dort „Kopieren“, hier „Einfügen“ – oder dort „Export“ und hier „Foto/Datei“.'));
+      } }, '🖼 Foto/Datei'),
+      coachLink()));
+    col.appendChild(h('div', { class: 'note' }, 'Aufstellung: „🏐 Coaching Board“ öffnet das Board. Dort „Kopieren“, zurück und hier „📋 Einfügen“ – oder dort „Export“ und hier „Foto/Datei“.'));
     return;
   }
   applyW(col, ex);
@@ -1084,6 +1120,7 @@ function imgCol(col, ex, ch, editable, onTapView) {
   new Pad(ph, ex.img.ink, { bg: ex.img.bg, img: ex.img.src, editable: editable, onChange: ch, onTap: editable ? null : onTapView });
   if (editable) col.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
     h('button', { class: 'btn sm', onclick: function () { copyImage(ex.img); } }, '⧉ Kopieren'),
+    coachLink(),
     ex.img.ink.strokes.length ? h('button', { class: 'btn sm', onclick: async function () {
       if (await ask('Alle Striche auf dem Bild löschen?', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { pushUndo(ex.img.ink, ex.img.ink.strokes.slice(), ch); ex.img.ink.strokes = []; ch(); imgCol(col, ex, ch, editable); layoutAll(); }
     } }, 'Striche löschen') : null,
@@ -1197,7 +1234,7 @@ function renderPlan(w) {
     if (!list.length) w.appendChild(h('div', { class: 'empty' }, 'Noch kein Training. Lege mit „+ Neues Training“ das erste an.'));
     list.forEach(function (t) {
       w.appendChild(h('div', { class: 'trow', onclick: function () { go('plan', { trId: t.id }); } },
-        h('div', { class: 't' }, h('b', null, trTitle(t)), h('span', { class: 'muted' }, t.blocks.length + ' Blöcke · ' + trCount(t) + ' Übungen' + (t.participants.names.length ? ' · ' + t.participants.names.length + ' Teilnehmer' : ''))),
+        h('div', { class: 't' }, h('b', null, trTitle(t)), h('span', { class: 'muted' }, ((t.goals || []).length ? t.goals.join(', ') + ' · ' : '') + t.blocks.length + ' Blöcke · ' + trCount(t) + ' Übungen' + (t.participants.names.length ? ' · ' + t.participants.names.length + ' Teilnehmer' : ''))),
         h('button', { class: 'btn sm', onclick: function (e) { e.stopPropagation(); var c = clone(t); c.id = uid(); c.date = todayISO(); c.participants = { names: [], shots: [], pos: zeroPos() }; c.blocks.forEach(function (b) { b.id = uid(); b.items.forEach(function (it) { it.iid = uid(); it.note = null; }); }); DB.tr.set(c.id, c); markTr(c); go('plan', { trId: c.id }); toast('Training kopiert'); } }, 'Kopieren'),
         h('button', { class: 'btn sm warn', onclick: async function (e) { e.stopPropagation(); if (await ask('Training „' + trTitle(t) + '“ löschen? Die Übungen bleiben in der Datenbank.', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { delTr(t.id); render(); } } }, 'Löschen')));
     });
@@ -1218,6 +1255,8 @@ function renderPlan(w) {
     h('div', null, h('div', { class: 'lbl' }, 'Datum'), dIn),
     h('div', null, h('div', { class: 'lbl' }, 'Beginn'), tIn),
     h('div', { style: 'flex:1;min-width:200px' }, h('div', { class: 'lbl' }, 'Ort'), textSuggest(tr.place, 'places', function (v) { tr.place = v; DB.kv.last.place = v; markKv('last'); chTr(); }, 'Halle …', 20))));
+  card.appendChild(h('div', { class: 'lbl' }, 'Ziele des Trainings'));
+  card.appendChild(chipInput(tr.goals, 'goals', chTr, { ph: 'Ziel …' }));
   var P = tr.participants;
   card.appendChild(h('div', { class: 'lbl' }, 'Teilnehmer (' + P.names.length + ')'));
   var namesBox = chipInput(P.names, 'names', function () { chTr(); }, { ph: 'Name …', n: 14 });
@@ -1457,6 +1496,7 @@ function renderRun(w) {
     h('button', { class: 'btn', onclick: function () { go('plan', { trId: tr.id }); } }, '✎ Bearbeiten')));
   var P = tr.participants, n = posSum(P.pos) || P.names.length;
   var head = h('div', { class: 'card' }, h('h2', { style: 'margin:0 0 4px' }, trTitle(tr)),
+    (tr.goals || []).length ? h('div', { style: 'margin:4px 0 6px' }, h('b', { style: 'margin-right:6px' }, 'Ziele:'), tr.goals.map(function (g) { return h('span', { class: 'chip' }, g); })) : null,
     n ? h('div', { class: 'muted' }, n + ' Teilnehmer' + (posSum(P.pos) ? ' (' + posText(P.pos) + ')' : '')) : null,
     P.names.length ? h('div', { style: 'margin-top:6px' }, P.names.map(function (x) { return h('span', { class: 'chip' }, x); })) : null,
     P.shots.length ? h('div', { class: 'thumbs', style: 'margin-top:8px' }, P.shots.map(function (sh, i) { return shotThumb(sh, function () { openShot(tr, i, function () { render(); }); }); })) : null);
@@ -1478,7 +1518,7 @@ function runItem(tr, it) {
     pl ? h('span', { class: 'muted' }, pl + ' Spieler' + (ex.pmode === 'pos' && posSum(ex.pos) ? ' (' + posText(ex.pos) + ')' : '')) : null));
   if (ex.goals.length || ex.tags.length) card.appendChild(h('div', { style: 'margin-top:4px' }, ex.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), ex.tags.map(function (g) { return h('span', { class: 'chip tag' }, g); })));
   var ci = h('div', { class: 'ci' }), cd = h('div', { class: 'cd' });
-  if (ex.img) card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, ci, cd)); else card.appendChild(cd);
+  if (ex.img) card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, ci, cd)); else card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, cd, h('div', { class: 'ci runempty' })));
   var annotate = function () {
     var a = it.note && it.note.annot;
     openZoom(ex.img.ink, ex.img.bg, ex.img.src, {
@@ -1746,6 +1786,7 @@ async function makeTrainingPdf(tr, opt) {
   txt('Training ' + fmtDate(tr.date) + (tr.time ? ', ' + tr.time + ' Uhr' : ''), M, y + 7, 18, 'bold'); y += 11;
   var P = tr.participants, n = posSum(P.pos) || P.names.length;
   var meta = [tr.place, n ? n + ' Teilnehmer' + (posSum(P.pos) ? ' (' + posText(P.pos) + ')' : '') : ''].filter(Boolean).join(' · ');
+  if ((tr.goals || []).length) wrapped('Ziele: ' + tr.goals.join(', '), 12, 'bold', [29, 63, 143]);
   if (meta) wrapped(meta, 11, 'normal', [80, 80, 80]);
   if (P.names.length) wrapped(P.names.join(', '), 10, 'normal', [80, 80, 80]);
   y += 3;
@@ -1891,6 +1932,7 @@ $('#menuBtn').onclick = function () {
     p.appendChild(h('button', { onclick: function () { closePops(); importAll(); } }, '📂 Laden (Datei)'));
     p.appendChild(h('div', { class: 'note', style: 'padding:0 8px 6px' }, 'Letzte Sicherung: ' + ago(DB.kv.backup) + (DB.kv.dirty ? ' · seitdem geändert' : '')));
     p.appendChild(h('button', { onclick: function () { closePops(); openSettings(); } }, '⚙︎ Einstellungen'));
+    p.appendChild(h('button', { onclick: function () { closePops(); openLexicon(); } }, '✎ Vorschläge verwalten'));
     p.appendChild(h('button', { onclick: function () { closePops(); openHelp(); } }, '? Hilfe'));
     p.appendChild(h('div', { class: 'note', style: 'padding:4px 8px 0' }, 'VB Training ' + VERSION));
   });
@@ -1984,10 +2026,94 @@ function importData(data) {
     var c = DB.tr.get(e.id); if (!c || e.updated > c.updated) { DB.tr.set(e.id, normTr(e)); dirtyTr.add(e.id); nTr++; }
   });
   var L = data.lex || {};
-  Object.keys(L).forEach(function (k) { DB.kv.lex[k] = DB.kv.lex[k] || {}; Object.keys(L[k]).forEach(function (w) { DB.kv.lex[k][w] = Math.max(DB.kv.lex[k][w] || 0, L[k][w]); }); });
+  Object.keys(L).forEach(function (k) { DB.kv.lex[k] = DB.kv.lex[k] || {}; Object.keys(L[k]).forEach(function (w) { var a = DB.kv.lex[k][w], b = L[k][w]; DB.kv.lex[k][w] = (a < 0 || b < 0) ? -1 : Math.max(a || 0, b); }); });
   markKv('lex'); markKv('deleted'); flush();
   render();
   ask('Geladen: ' + nEx + ' Übung(en) und ' + nTr + ' Training(s) neu oder aktualisiert' + (nDel ? ', ' + nDel + ' gelöscht' : '') + '. Was auf diesem Gerät neuer war, blieb erhalten.', [['OK', 1, 'pri']]);
+}
+var LEX_KINDS = [['goals', 'Ziele'], ['tags', 'Stichworte'], ['names', 'Namen'], ['places', 'Orte'], ['fields', 'Felder']];
+function lexUses(kind, w) {
+  var n = 0, lw = w.toLowerCase();
+  var inArr = function (a) { return (a || []).some(function (x) { return x.toLowerCase() === lw; }); };
+  DB.ex.forEach(function (e) { if ((kind === 'goals' && inArr(e.goals)) || (kind === 'tags' && inArr(e.tags))) n++; });
+  DB.tr.forEach(function (t) {
+    if (kind === 'goals' && inArr(t.goals)) n++;
+    if (kind === 'names' && inArr(t.participants.names)) n++;
+    if (kind === 'places' && (t.place || '').toLowerCase() === lw) n++;
+    t.blocks.forEach(function (b) { b.items.forEach(function (it) {
+      if ((kind === 'goals' && inArr(it.ex.goals)) || (kind === 'tags' && inArr(it.ex.tags))) n++;
+      if (kind === 'fields' && (it.field || '').toLowerCase() === lw) n++;
+    }); });
+  });
+  return n;
+}
+function lexRename(kind, old, nw) {
+  var lo = old.toLowerCase();
+  var fix = function (a) {
+    if (!a || !a.some(function (x) { return x.toLowerCase() === lo; })) return false;
+    var out = []; a.forEach(function (x) { var y = x.toLowerCase() === lo ? nw : x; if (!out.some(function (z) { return z.toLowerCase() === y.toLowerCase(); })) out.push(y); });
+    a.length = 0; out.forEach(function (x) { a.push(x); }); return true;
+  };
+  DB.ex.forEach(function (e) { if ((kind === 'goals' && fix(e.goals)) | (kind === 'tags' && fix(e.tags))) markEx(e); });
+  DB.tr.forEach(function (t) {
+    var ch = false;
+    if (kind === 'goals' && fix(t.goals)) ch = true;
+    if (kind === 'names' && fix(t.participants.names)) ch = true;
+    if (kind === 'places' && (t.place || '').toLowerCase() === lo) { t.place = nw; ch = true; }
+    t.blocks.forEach(function (b) { b.items.forEach(function (it) {
+      if ((kind === 'goals' && fix(it.ex.goals)) | (kind === 'tags' && fix(it.ex.tags))) ch = true;
+      if (kind === 'fields' && (it.field || '').toLowerCase() === lo) { it.field = nw; ch = true; }
+    }); });
+    if (ch) markTr(t);
+  });
+  if (kind === 'places' && DB.kv.last && (DB.kv.last.place || '').toLowerCase() === lo) { DB.kv.last.place = nw; markKv('last'); }
+}
+function openLexicon() {
+  var kind = 'goals', ov = h('div', { class: 'modal' }), box = h('div', { class: 'mbox', style: 'max-width:560px;max-height:90vh;display:flex;flex-direction:column' });
+  function words() {
+    var L = DB.kv.lex[kind] || {}, ws = Object.keys(L).filter(function (w) { return !(L[w] < 0); });
+    if (kind === 'goals') GOAL_SEED.forEach(function (g) { if (!(g in L)) ws.push(g); });
+    return ws.sort(function (a, b) { return a.localeCompare(b, 'de'); });
+  }
+  function draw() {
+    box.innerHTML = '';
+    box.appendChild(h('h2', { style: 'margin-top:0' }, 'Vorschläge verwalten'));
+    box.appendChild(h('div', { style: 'overflow-x:auto;margin-bottom:8px' }, segCtl(LEX_KINDS, kind, function (v) { kind = v; draw(); })));
+    box.appendChild(h('div', { class: 'note', style: 'margin-bottom:8px' }, 'Umbenennen: Text ändern und ✓ tippen – auf Wunsch auch überall, wo der Eintrag schon verwendet wird. 🗑 entfernt den Eintrag nur aus der Vorschlagsliste; vorhandene Übungen und Trainings bleiben unverändert.'));
+    var list = h('div', { style: 'overflow-y:auto;flex:1;min-height:120px' });
+    var ws = words();
+    if (!ws.length) list.appendChild(h('div', { class: 'muted', style: 'padding:12px 0' }, 'Noch keine Einträge.'));
+    ws.forEach(function (w) {
+      var inp = h('input', { type: 'text', value: w, style: 'flex:1;min-width:120px' });
+      var uses = lexUses(kind, w);
+      var save = async function () {
+        var nw = inp.value.trim(); if (!nw || nw === w) { inp.value = w; return; }
+        var all = true;
+        if (uses) {
+          var r = await ask('„' + w + '“ wird ' + uses + '× verwendet. Auch dort in „' + nw + '“ umbenennen?', [['Abbrechen', 0], ['Nur Vorschlag', 1], ['Überall umbenennen', 2, 'pri']]);
+          if (!r) { inp.value = w; return; }
+          all = r === 2;
+        }
+        var L = DB.kv.lex; L[kind] = L[kind] || {};
+        var c = Math.max(0, L[kind][w] || 0);
+        L[kind][w] = -1; L[kind][nw] = Math.max(0, L[kind][nw] || 0) + Math.max(1, c);
+        markKv('lex');
+        if (all && uses) lexRename(kind, w, nw);
+        flush(); toast('Umbenannt'); draw();
+      };
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+      list.appendChild(h('div', { class: 'row', style: 'padding:5px 0;border-bottom:1px solid #f0f0ec;flex-wrap:nowrap' },
+        inp,
+        h('span', { class: 'muted', style: 'min-width:54px;text-align:right', title: 'so oft verwendet' }, uses ? uses + '×' : '–'),
+        h('button', { class: 'btn sm', title: 'Umbenennen', onclick: save }, '✓'),
+        h('button', { class: 'btn sm warn', title: 'Aus der Vorschlagsliste entfernen', onclick: function () {
+          var L = DB.kv.lex; L[kind] = L[kind] || {}; L[kind][w] = -1; markKv('lex'); flush(); toast('„' + w + '“ aus den Vorschlägen entfernt'); draw();
+        } }, '🗑')));
+    });
+    box.appendChild(list);
+    box.appendChild(h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn pri', onclick: function () { ov.remove(); render(); } }, 'Fertig')));
+  }
+  draw(); ov.appendChild(box); document.body.appendChild(ov);
 }
 function openSettings() {
   var ov = h('div', { class: 'modal' }), box = h('div', { class: 'mbox', style: 'max-height:90vh;overflow:auto' });
@@ -2003,6 +2129,11 @@ function openSettings() {
     }
     box.appendChild(h('div', { class: 'lbl' }, 'Schreibflächen'));
     box.appendChild(segCtl([[true, 'Liniert'], [false, 'Blanko']], S.lines !== false, function (v) { S.lines = v; saveS(); draw(); render(); }));
+    var cu = h('input', { type: 'url', value: coachUrl(), style: 'width:100%', autocapitalize: 'off', spellcheck: false });
+    cu.addEventListener('change', function () { S.coachUrl = cu.value.trim() || DEF_SET.coachUrl; cu.value = S.coachUrl; saveS(); });
+    box.appendChild(h('div', { class: 'lbl' }, 'Adresse des Coaching Boards'));
+    box.appendChild(cu);
+    box.appendChild(h('div', { class: 'note' }, 'Wird vom Knopf „🏐 Coaching Board“ in jeder Übung geöffnet.'));
     box.appendChild(h('div', { class: 'lbl' }, 'Finger auf den Schreibflächen'));
     box.appendChild(segCtl([[false, 'Scrollt (empfohlen)'], [true, 'Schreibt']], S.finger, function (v) { S.finger = v; saveS(); draw(); render(); }));
     box.appendChild(h('div', { class: 'note' }, '„Schreibt“ nur für Geräte ohne Stift (z. B. iPhone). Dann scrollt man außerhalb der Schreibflächen.'));
@@ -2024,14 +2155,15 @@ function openHelp() {
     '<li>Ein <b>Block</b> hat eine Dauer; daraus werden die Uhrzeiten berechnet. In einem Block können mehrere Übungen parallel laufen (Feld angeben).</li>' +
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
-    '<li>Ziele, Stichworte, Namen, Orte und Felder lernt die App und schlägt sie wieder vor.</li>' +
+    '<li>Oben im Training stehen die <b>Ziele des Trainings</b>.</li>' +
+    '<li>Ziele, Stichworte, Namen, Orte und Felder lernt die App. Vorschläge öffnen sich über den kleinen Pfeil <b>▾</b> als Liste; beim Tippen erscheinen passende Einträge. Vertippte oder überholte Einträge: <b>☰ → Vorschläge verwalten</b> (umbenennen – auf Wunsch überall – oder aus der Liste löschen).</li>' +
     '<li><b>Beschreibung:</b> Eine leere Übung zeigt eine Schreibfläche für den Stift. Mit „+ ⌨ Text“ bzw. „+ ✎ Handschrift“ kommt das andere Feld dazu. Felder, die leer bleiben, verschwinden beim nächsten Öffnen wieder.</li>' +
     '<li><b>Text formatieren:</b> Leiste über dem Textfeld (fett, kursiv, unterstrichen, Aufzählung, nummerierte Liste, Einzug für Unterpunkte). „- “ oder „1. “ am Zeilenanfang startet automatisch eine Liste.</li>' +
     '<li><b>Aufteilung:</b> Beim Planen steht der Text links, das Bild rechts. Die graue Leiste dazwischen ziehen, um die Breite zu ändern. Die graue Leiste unter der Handschriftfläche ziehen, um die Höhe zu ändern. Liniert oder blanko: ☰ → Einstellungen.</li>' +
     '<li><b>Bild kopieren:</b> „⧉ Kopieren“ unter dem Bild (mit allen Strichen), z. B. um es in eine andere App einzufügen.</li></ul>' +
     '<h3>Schreiben mit dem Stift</h3><ul><li>Nur der Stift schreibt; Finger und Handballen scrollen nicht, solange geschrieben wird.</li>' +
     '<li>Werkzeuge oben: drei Stifte, Textmarker, Radierer; dahinter die Schalter <b>／ gerade Linie</b>, <b>┄ gestrichelt</b> und <b>➜ Pfeil am Ende</b> (für die Stifte, einzeln oder kombiniert, wie beim Coaching Board). <b>Aktives Werkzeug nochmals antippen</b> → Farbe und Stärke (Radierer: ganzer Strich oder nur Bereich).</li>' +
-    '<li>Bild: Spielfeld, Halbfeld, leer, oder ein Bild einfügen. Aufstellung aus dem Coaching Board: dort „Kopieren“, hier „📋 Einfügen“ – oder dort „Export“ und hier „🖼 Foto/Datei“. Auf jedes Bild kann man malen.</li></ul>' +
+    '<li>Bild: Spielfeld, Halbfeld, leer, oder ein Bild einfügen. <b>„🏐 Coaching Board“</b> öffnet das Coaching Board (Adresse unter ☰ → Einstellungen). Dort die Aufstellung zeichnen, „Kopieren“, zurück (in der Home-Bildschirm-App oben „Fertig“) und hier „📋 Einfügen“ – oder dort „Export“ und hier „🖼 Foto/Datei“. Auf jedes Bild kann man malen.</li></ul>' +
     '<h3>Durchführen</h3><ul><li>Das Training als Liste. Bild oder Beschreibung antippen → Vollbild. Im Vollbild: zwei Finger zoomen, doppelt tippen vergrößert bzw. zurück.</li><li>Im Vollbild eines Bildes kann man mit dem Stift (am Mac mit der Maus) <b>malen</b>. Beim Schließen fragt die App, ob die Anmerkungen als Notiz gespeichert werden. Erneutes Öffnen zeigt sie wieder zum Weitermalen. Das Bild der Übung selbst bleibt unverändert.</li><li>„+ ⌨ Notiz“ bzw. „+ ✎ Notiz“ für Anmerkungen als Text oder mit dem Stift. Leere Notizfelder verschwinden wieder. „🗑 Notiz löschen“ entfernt die ganze Notiz einer Übung.</li></ul>' +
     '<h3>PDF</h3><ul><li>„🖨 PDF“ beim Planen oder Durchführen erstellt das Training als PDF (A4) mit Bildern, Beschreibungen und auf Wunsch den Notizen.</li><li>iPad/iPhone: „Teilen“ → „Drucken“ oder „In Dateien sichern“. Mac: „Öffnen“ und dort drucken, oder „Herunterladen“.</li></ul>' +
     '<h3>Übungen</h3><ul><li>Übungen direkt für die Datenbank anlegen. Hier sind Ziel, Spieler je Position und Beschreibung Pflicht.</li><li>Suchen und nach Ziel oder Spielerzahl filtern.</li></ul>' +
