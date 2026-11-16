@@ -71,7 +71,7 @@ h2{font-size:20px;margin:16px 0 8px}
 .seg button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18)}
 .cols{display:flex;gap:14px;align-items:flex-start}
 .cols>div{flex:1;min-width:0}
-@media (max-width:720px){.cols{flex-direction:column}.cols>div{width:100%}.cols>.ci,.cols>.cd{flex:none!important}.rsz{display:none}}
+@media (max-width:720px){.cols{flex-direction:column}.cols>div{width:100%}.cols>.ci,.cols>.cd{flex:none!important}.rsz,.split{display:none!important}.shotbox{width:100%!important}}
 .pad{position:relative;border:1px solid #dcdcd5;border-radius:8px;overflow:hidden;background:#fff;touch-action:pan-y;width:100%}
 .pad.finger{touch-action:none}
 .pad canvas{position:absolute;left:0;top:0;pointer-events:none}
@@ -134,9 +134,20 @@ input[type=range]{width:100%;height:34px}
 .rte p,.rtx p{margin:0}
 .runtxt.rtx{white-space:normal}
 .big.rtx{white-space:normal}
-.cols>.ci{flex:0 0 50%}
+.cols>.ci{flex:0 0 34%}
 .cols>.cd{flex:1 1 0}
 .imgwrap{position:relative}
+.cols.ed{gap:2px}
+.split{flex:0 0 18px!important;align-self:stretch;cursor:col-resize;touch-action:none;display:flex;align-items:center;justify-content:center;min-height:60px}
+.split span{width:5px;height:56px;border-radius:3px;background:#c4c4bc}
+.split:active span{background:var(--acc)}
+.vgrip{height:22px;cursor:row-resize;touch-action:none;display:flex;justify-content:center;align-items:center}
+.vgrip span{width:56px;height:5px;border-radius:3px;background:#c4c4bc}
+.vgrip:active span{background:var(--acc)}
+.shotrow{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;margin-top:8px}
+.shotbox{position:relative;min-width:90px}
+.shotbox .sbtn{position:absolute;top:4px;display:flex;gap:4px;right:4px;z-index:3}
+.shotbox .sbtn button{border:0;background:rgba(0,0,0,.6);color:#fff;border-radius:8px;min-width:32px;height:30px;font-size:15px}
 .rsz{position:absolute;right:-9px;bottom:-9px;width:32px;height:32px;border-radius:50%;background:var(--acc);border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);touch-action:none;cursor:nwse-resize;z-index:3;color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center}
 .vstage{position:absolute;top:0;left:0;right:0;bottom:0;touch-action:none}
 .vtools{position:absolute;top:calc(8px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));display:flex;gap:4px;z-index:2;background:rgba(255,255,255,.94);border-radius:14px;padding:3px}
@@ -164,6 +175,10 @@ input[type=range]{width:100%;height:34px}
   <button class="tb" data-tool="hl" title="Textmarker"></button>
   <button class="tb" data-tool="er" title="Radierer"></button>
   <div class="vsep"></div>
+  <button class="tb" data-mod="straight" title="Gerade Linie"></button>
+  <button class="tb" data-mod="dash" title="Gestrichelt"></button>
+  <button class="tb" data-mod="arrow" title="Pfeil am Ende"></button>
+  <div class="vsep"></div>
   <button class="tb" id="undo" title="Rückgängig"><svg viewBox="0 0 30 30"><path d="M10 8l-5 5 5 5" fill="none" stroke="#333" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13h12a6.5 6.5 0 0 1 0 13h-4" fill="none" stroke="#333" stroke-width="2.2" stroke-linecap="round"/></svg></button>
   <button class="tb" id="redo" title="Wiederholen"><svg viewBox="0 0 30 30" style="transform:scaleX(-1)"><path d="M10 8l-5 5 5 5" fill="none" stroke="#333" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13h12a6.5 6.5 0 0 1 0 13h-4" fill="none" stroke="#333" stroke-width="2.2" stroke-linecap="round"/></svg></button>
 </div>
@@ -173,7 +188,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.7';
+var VERSION = '0.9.8';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -189,7 +204,7 @@ var ER_R = [['S', 6], ['M', 12], ['L', 26]];
 var DEF_SET = {
   slots: [{ c: '#1a1a1a', w: 1.6 }, { c: '#1f4fd1', w: 1.6 }, { c: '#d02a2a', w: 2.6 }],
   hl: { c: '#fff176', w: 18 }, er: { mode: 'stroke', r: 12 },
-  pressure: true, sens: 0.7, finger: false, fs: 26
+  pressure: true, sens: 0.7, finger: false, fs: 26, lines: true
 };
 
 /* ================= DOM-Helfer ================= */
@@ -408,6 +423,23 @@ function newTr() {
 }
 function realStroke(s) { var q = s.p, a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (var i = 0; i < q.length; i += 3) { a = Math.min(a, q[i]); c = Math.max(c, q[i]); b = Math.min(b, q[i + 1]); d = Math.max(d, q[i + 1]); } return q.length > 9 || (c - a) + (d - b) > 6; }
 function hasInk(d) { return !!(d && d.strokes && d.strokes.some(realStroke)); }
+function lineBg() { return S.lines === false ? 'none' : 'lines'; }
+function addGrip(parent, pad, d, onChange, minH) {
+  // Ziehleiste unter einer Schreibfläche: Höhe verändern
+  var g = h('div', { class: 'vgrip', title: 'Höhe ziehen' }, h('span'));
+  g.addEventListener('pointerdown', function (e) {
+    e.preventDefault(); try { g.setPointerCapture(e.pointerId); } catch (_) {}
+    var y0 = e.clientY, h0 = d.h, used = d.strokes.length ? inkUsed(d) + 10 : 0, raf = 0, last = h0;
+    var mv = function (ev) {
+      last = Math.max(minH || 120, used, Math.round(h0 + (ev.clientY - y0) / (pad.sc || 1)));
+      if (!raf) raf = requestAnimationFrame(function () { raf = 0; d.h = last; pad.layout(true); });
+    };
+    var up = function () { g.removeEventListener('pointermove', mv); g.removeEventListener('pointerup', up); g.removeEventListener('pointercancel', up); d.h = last; pad.layout(true); onChange(); };
+    g.addEventListener('pointermove', mv); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
+  });
+  parent.appendChild(g);
+  return g;
+}
 function hasDesc(ex) { return !!(htmlText(ex.desc.html).trim() || hasInk(ex.desc.ink)); }
 function sig(ex) { return JSON.stringify([ex.title, ex.goals, ex.tags, ex.pmode, ex.pmode === 'pos' ? ex.pos : ex.total, ex.desc.html, ex.desc.ink.strokes, ex.img]); }
 function blockTimes(tr) {
@@ -424,8 +456,9 @@ function timeLabel(x) { return !x ? '' : x.e == null ? 'ab ' + fmtTime(x.s) : fm
 function exLabel(ex) { return ex.title || (ex.goals.length ? ex.goals.join(', ') : 'Übung ohne Titel'); }
 
 /* ================= Tinte: Geometrie ================= */
+function polyS(s) { return !!(s.d || s.l || s.a); }
 function rad(s, p) {
-  if (s.t === 'h') return s.w / 2;
+  if (s.t === 'h' || polyS(s)) return s.w / 2;
   var f = 0.35 + 2.2 * Math.pow(p, 0.8); if (f > 2.4) f = 2.4;
   f = 1 + (f - 1) * s.k;
   return Math.max(0.25, s.w * f / 2);
@@ -468,7 +501,7 @@ function hlPath(q) {
 }
 function buildPath(s) {
   var q = s.p, n = q.length / 3;
-  if (s.t === 'h') return hlPath(q);
+  if (s.t === 'h' || polyS(s)) return hlPath(q);
   var P = new Path2D();
   if (n === 1) { disc(P, q[0], q[1], rad(s, q[2])); return P; }
   for (var i = 0; i < n - 1; i++) seg(P, s, Math.max(0, i - 1), i, i + 1, Math.min(n - 1, i + 2), i === 0);
@@ -480,12 +513,29 @@ function bbOf(s) {
   var b = BBS.get(s); if (b) return b;
   var q = s.p, a = 1e9, bb = 1e9, c = -1e9, d = -1e9;
   for (var i = 0; i < q.length; i += 3) { if (q[i] < a) a = q[i]; if (q[i] > c) c = q[i]; if (q[i + 1] < bb) bb = q[i + 1]; if (q[i + 1] > d) d = q[i + 1]; }
-  var m = (s.t === 'h' ? s.w / 2 : s.w * 1.25) + 1; b = [a - m, bb - m, c + m, d + m]; BBS.set(s, b); return b;
+  var m = (s.t === 'h' ? s.w / 2 : s.w * 1.25) + 1; if (s.a) m = Math.max(m, arrowLen(s) + 1); b = [a - m, bb - m, c + m, d + m]; BBS.set(s, b); return b;
+}
+function arrowLen(s) { return Math.max(9, s.w * 5); }
+function arrowHead(ctx, s) {
+  var q = s.p, n = q.length / 3; if (n < 2) return;
+  var x1 = q[n * 3 - 3], y1 = q[n * 3 - 2], L = arrowLen(s), i = n - 2, x0 = q[i * 3], y0 = q[i * 3 + 1];
+  while (i > 0 && Math.hypot(x1 - x0, y1 - y0) < L) { i--; x0 = q[i * 3]; y0 = q[i * 3 + 1]; }
+  if (Math.hypot(x1 - x0, y1 - y0) < 0.5) return;
+  var a = Math.atan2(y1 - y0, x1 - x0);
+  ctx.beginPath(); ctx.moveTo(x1 + Math.cos(a) * s.w * 0.6, y1 + Math.sin(a) * s.w * 0.6);
+  ctx.lineTo(x1 - L * Math.cos(a - 0.42), y1 - L * Math.sin(a - 0.42));
+  ctx.lineTo(x1 - L * Math.cos(a + 0.42), y1 - L * Math.sin(a + 0.42));
+  ctx.closePath(); ctx.fillStyle = s.c; ctx.fill();
 }
 function drawStroke(ctx, s) {
   if (s.t === 'h') {
     ctx.globalCompositeOperation = 'multiply'; ctx.strokeStyle = s.c; ctx.lineWidth = s.w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.stroke(s.path || pathOf(s)); ctx.globalCompositeOperation = 'source-over';
+  } else if (polyS(s)) {
+    ctx.save(); ctx.strokeStyle = s.c; ctx.lineWidth = s.w; ctx.lineCap = s.d ? 'butt' : 'round'; ctx.lineJoin = 'round';
+    if (s.d) ctx.setLineDash([s.w * 4, s.w * 3]);
+    ctx.stroke(s.path || pathOf(s)); ctx.restore();
+    if (s.a) arrowHead(ctx, s);
   } else { ctx.fillStyle = s.c; ctx.fill(pathOf(s)); }
 }
 function drawCourt(ctx, d, kind) {
@@ -602,15 +652,17 @@ function padDown(pad, e) {
     var isH = tool === 'hl', cfg = isH ? S.hl : S.slots[+tool[1]];
     inp.mode = 'draw'; inp.ps = null; inp.P = new Path2D();
     inp.s = { t: isH ? 'h' : 'p', c: cfg.c, w: r2(cfg.w / sc), k: S.pressure ? S.sens : 0, p: [] };
+    if (!isH) { if (S.straight) inp.s.l = 1; if (S.dash) inp.s.d = 1; if (S.arrow) inp.s.a = 1; if (polyS(inp.s)) { inp.s.k = 0; inp.s.w = r2(Math.max(cfg.w, 1.4) / sc); } }
     liveCv.style.mixBlendMode = isH ? 'multiply' : 'normal';
     addPt(e);
-    if (isH) drawLiveHl(); else drawTip(e);
+    if (isH || polyS(inp.s)) drawLiveHl(); else drawTip(e);
   }
 }
 function addPt(ev) {
   var I = inp, s = I.s, q = s.p, xy = padXY(ev), x = xy[0], y = xy[1];
   var p = I.type === 'pen' ? ev.pressure : 0.27;
   if (I.type === 'pen' && !(p > 0)) p = I.ps == null ? 0.2 : I.ps;
+  if (s.l && q.length >= 6) { q[3] = r1(x); q[4] = r1(y); q[5] = 0.3; return true; }   // gerade Linie: nur Endpunkt verschieben
   if (q.length && Math.hypot(x - q[q.length - 3], y - q[q.length - 2]) < 0.35 / I.pad.sc) return false;
   I.ps = I.ps == null ? p : I.ps + (p - I.ps) * 0.45;
   q.push(r1(x), r1(y), r2(I.ps)); return true;
@@ -628,7 +680,7 @@ function drawTip(e) {
   }
   xT.fillStyle = s.c; xT.fill(P);
 }
-function drawLiveHl() { clr(xL); inp.pad.setT(xL); var s = inp.s; drawStroke(xL, { t: 'h', c: s.c, w: s.w, path: hlPath(s.p) }); }
+function drawLiveHl() { clr(xL); inp.pad.setT(xL); var s = inp.s; drawStroke(xL, { t: s.t, c: s.c, w: s.w, d: s.d, l: s.l, a: s.a, p: s.p, path: hlPath(s.p) }); }
 function eraserCursor(x, y) {
   var pad = inp.pad; clr(xT); pad.setT(xT); var r = S.er.r / pad.sc;
   xT.beginPath(); xT.arc(x, y, r, 0, 6.2832); xT.fillStyle = 'rgba(255,255,255,.55)'; xT.fill();
@@ -642,9 +694,9 @@ function padMove(e) {
     var s = I.s, added = false;
     list.forEach(function (ev) {
       if (!addPt(ev)) return; added = true;
-      if (s.t === 'p') { var n = s.p.length / 3; if (n >= 3) { var i = n - 3; seg(I.P, s, Math.max(0, i - 1), i, i + 1, i + 2, i === 0); } }
+      if (s.t === 'p' && !polyS(s)) { var n = s.p.length / 3; if (n >= 3) { var i = n - 3; seg(I.P, s, Math.max(0, i - 1), i, i + 1, i + 2, i === 0); } }
     });
-    if (s.t === 'h') { if (added) drawLiveHl(); }
+    if (s.t === 'h' || polyS(s)) { if (added) drawLiveHl(); }
     else { if (added) { clr(xL); I.pad.setT(xL); xL.fillStyle = s.c; xL.fill(I.P); } drawTip(e); }
   } else if (I.mode === 'er') {
     var ch = false, x = I.lx, y = I.ly;
@@ -730,8 +782,12 @@ function cut(s, x0, y0, x1, y1, r) {
     else { if (cur.length) runs.push(cur); cur = []; }
   }
   if (cur.length) runs.push(cur);
-  return runs.filter(function (rn) { return rn.length >= 6; }).map(function (rn) {
-    return { t: s.t, c: s.c, w: s.w, k: s.k, p: rdp(rn, 0.25).map(function (v, i) { return i % 3 === 2 ? r2(v) : r1(v); }) };
+  var endKept = cur.length && runs[runs.length - 1] === cur;
+  var keepRuns = runs.filter(function (rn) { return rn.length >= 6; });
+  return keepRuns.map(function (rn, ix) {
+    var o = { t: s.t, c: s.c, w: s.w, k: s.k, p: rdp(rn, 0.25).map(function (v, i) { return i % 3 === 2 ? r2(v) : r1(v); }) };
+    if (s.d) o.d = 1; if (s.l) o.l = 1; if (s.a && endKept && ix === keepRuns.length - 1) o.a = 1;
+    return o;
   });
 }
 function eraseSeg(x0, y0, x1, y1) {
@@ -767,7 +823,19 @@ var ic = {
   hl: function (c) { return '<svg viewBox="0 0 30 30"><path d="M8 19l3-8 9-8 5 5-8 9-8 3z" fill="#fff" stroke="#444" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 19l3-8 5 5z" fill="' + c + '" stroke="#444" stroke-width="1"/><rect x="4" y="23" width="22" height="6" rx="1.5" fill="' + c + '"/></svg>'; },
   er: '<svg viewBox="0 0 30 30"><path d="M5 18l10-10 9 9-7 7h-6z" fill="#fff" stroke="#444" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 18l5-5 9 9-2 2h-6z" fill="#f4b3c0" stroke="#444" stroke-width="1.5" stroke-linejoin="round"/><path d="M14 26h11" stroke="#444" stroke-width="1.5" stroke-linecap="round"/></svg>'
 };
+var MOD_IC = {
+  straight: '<svg viewBox="0 0 30 30"><path d="M6 24L24 6" stroke="#333" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  dash: '<svg viewBox="0 0 30 30"><path d="M5 15h20" stroke="#333" stroke-width="2.6" stroke-dasharray="4.5 3.5"/></svg>',
+  arrow: '<svg viewBox="0 0 30 30"><path d="M5 15h15" stroke="#333" stroke-width="2.4" stroke-linecap="round"/><path d="M25 15l-7-5v10z" fill="#333"/></svg>'
+};
+function modButtons(onChange) {
+  return ['straight', 'dash', 'arrow'].map(function (m) {
+    return h('button', { class: 'tb' + (S[m] ? ' on' : ''), title: { straight: 'Gerade Linie', dash: 'Gestrichelt', arrow: 'Pfeil am Ende' }[m], html: MOD_IC[m],
+      onclick: function () { S[m] = !S[m]; if (tool === 'hl' || tool === 'er') { tool = 'p0'; } saveS(); refreshPens(); if (onChange) onChange(); } });
+  });
+}
 function refreshPens() {
+  document.querySelectorAll('#pens [data-mod]').forEach(function (b) { var m = b.dataset.mod; b.innerHTML = MOD_IC[m]; b.classList.toggle('on', !!S[m]); });
   document.querySelectorAll('[data-tool]').forEach(function (b) {
     var t = b.dataset.tool;
     b.innerHTML = t[0] === 'p' ? ic.pen(S.slots[+t[1]].c, S.slots[+t[1]].w) : t === 'hl' ? ic.hl(S.hl.c) : ic.er;
@@ -810,6 +878,9 @@ function erPop(p, re) {
   p.appendChild(h('h4', null, 'Größe'));
   p.appendChild(segCtl(ER_R.map(function (x) { return [x[1], x[0]]; }), S.er.r, function (v) { S.er.r = v; saveS(); re(); }));
 }
+document.querySelectorAll('#pens [data-mod]').forEach(function (b) {
+  b.addEventListener('click', function () { closePops(); var m = b.dataset.mod; S[m] = !S[m]; if (S[m] && (tool === 'hl' || tool === 'er')) tool = 'p0'; saveS(); refreshPens(); });
+});
 document.querySelectorAll('[data-tool]').forEach(function (b) {
   b.addEventListener('click', function () {
     var t = b.dataset.tool;
@@ -959,7 +1030,7 @@ function shotThumb(sh, onTap, onDel) {
 function openImage(src) { var im = imgFor(src); var go = function () { openZoom({ w: 600, h: Math.round(600 * im.naturalHeight / im.naturalWidth) || 400, strokes: [] }, 'none', src); }; if (im.complete) go(); else im._cbs.push(go); }
 
 /* ---------- Übungskarte ---------- */
-function applyW(col, ex) { col.style.flexBasis = ex.img ? (ex.img.wpct || 50) + '%' : ''; }
+function applyW(col, ex) { col.style.flexBasis = ex.img ? (ex.img.wpct || 50) + '%' : ''; var sp = col.parentNode && col.parentNode.querySelector && col.parentNode.querySelector(':scope > .split'); if (sp) sp.style.visibility = ex.img ? 'visible' : 'hidden'; }
 function renderImageCanvas(img, extra, maxW) {
   var d = img.ink, im = img.src ? imgFor(img.src) : null;
   var tw = im && im.naturalWidth ? Math.max(1000, Math.min(maxW || 2400, im.naturalWidth)) : Math.min(maxW || 1400, 1400), sc = tw / d.w;
@@ -1011,17 +1082,6 @@ function imgCol(col, ex, ch, editable, onTapView) {
   applyW(col, ex);
   var wrapP = h('div', { class: 'imgwrap' }), ph = h('div'); wrapP.appendChild(ph); col.appendChild(wrapP);
   new Pad(ph, ex.img.ink, { bg: ex.img.bg, img: ex.img.src, editable: editable, onChange: ch, onTap: editable ? null : onTapView });
-  if (editable) {
-    var hd = h('div', { class: 'rsz', title: 'Größe ziehen' }, '⤡'); wrapP.appendChild(hd);
-    hd.addEventListener('pointerdown', function (e) {
-      e.preventDefault(); e.stopPropagation(); try { hd.setPointerCapture(e.pointerId); } catch (_) {}
-      var cols = col.parentNode; if (!cols) return;
-      var r0 = cols.getBoundingClientRect();
-      var mv = function (ev) { ex.img.wpct = Math.max(20, Math.min(80, Math.round((ev.clientX - r0.left) / r0.width * 100))); applyW(col, ex); };
-      var up = function () { hd.removeEventListener('pointermove', mv); hd.removeEventListener('pointerup', up); hd.removeEventListener('pointercancel', up); ch(); };
-      hd.addEventListener('pointermove', mv); hd.addEventListener('pointerup', up); hd.addEventListener('pointercancel', up);
-    });
-  }
   if (editable) col.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
     h('button', { class: 'btn sm', onclick: function () { copyImage(ex.img); } }, '⧉ Kopieren'),
     ex.img.ink.strokes.length ? h('button', { class: 'btn sm', onclick: async function () {
@@ -1046,20 +1106,17 @@ function descCol(col, ex, ch, editable, onTapView) {
     }
     if (showI) {
       var ph = h('div', { style: 'margin-top:6px' }); col.appendChild(ph);
-      var pad = new Pad(ph, d.ink, { bg: 'lines', editable: true, grow: true, onChange: ch });
+      var pad = new Pad(ph, d.ink, { bg: lineBg(), editable: true, grow: true, onChange: ch });
+      addGrip(col, pad, d.ink, ch, 140);
     }
     var add = function (which) { if (showI) col._i = true; if (showT) col._t = true; if (which === 't') { col._t = true; col._focus = true; } else col._i = true; descCol(col, ex, ch, editable); layoutAll(); updToolbar(); };
     col.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
       !showT ? h('button', { class: 'btn sm', onclick: function () { add('t'); } }, '+ ⌨ Text') : null,
       !showI ? h('button', { class: 'btn sm', onclick: function () { add('i'); } }, '+ ✎ Handschrift') : null,
-      showI ? h('button', { class: 'btn sm', onclick: function () { d.ink.h += 160; pad.layout(true); ch(); } }, '+ Platz') : null,
-      showI && d.ink.h > 240 ? h('button', { class: 'btn sm', onclick: function () {
-        var maxY = 0; d.ink.strokes.forEach(function (st2) { maxY = Math.max(maxY, bbOf(st2)[3]); });
-        d.ink.h = Math.max(240, Math.ceil(maxY + 30), d.ink.h - 160); pad.layout(true); ch();
-      } }, '− Platz') : null));
+      null));
   } else {
     if (hasT) col.appendChild(h('div', { class: 'runtxt rtx', onclick: onTapView, html: sanitize(d.html) }));
-    if (hasI) { var ph2 = h('div'); col.appendChild(ph2); new Pad(ph2, d.ink, { bg: 'lines', onTap: onTapView }); }
+    if (hasI) { var ph2 = h('div'); col.appendChild(ph2); new Pad(ph2, d.ink, { bg: lineBg(), onTap: onTapView }); }
     if (!hasT && !hasI) col.appendChild(h('div', { class: 'muted' }, '–'));
   }
 }
@@ -1087,8 +1144,17 @@ function exCard(ex, o) {
   card.appendChild(h('div', { class: 'lbl' }, 'Spieler', o.mode === 'db' ? h('span', { class: 'req' }, ' *') : null));
   if (o.posOnly) ex.pmode = 'pos';
   card.appendChild(posEditor(ex, ch, { posOnly: o.posOnly }));
-  var ci = h('div', { class: 'ci' }), cd = h('div', { class: 'cd' });
-  card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, ci, cd));
+  var ci = h('div', { class: 'ci' }), cd = h('div', { class: 'cd' }), sp = h('div', { class: 'split', title: 'Breite ziehen' }, h('span'));
+  var cols = h('div', { class: 'cols ed', style: 'margin-top:4px' }, cd, sp, ci);
+  card.appendChild(cols);
+  sp.addEventListener('pointerdown', function (e) {
+    if (!ex.img) return;
+    e.preventDefault(); try { sp.setPointerCapture(e.pointerId); } catch (_) {}
+    var r0 = cols.getBoundingClientRect();
+    var mv = function (ev) { ex.img.wpct = Math.max(20, Math.min(80, Math.round((r0.right - ev.clientX) / r0.width * 100))); applyW(ci, ex); };
+    var up = function () { sp.removeEventListener('pointermove', mv); sp.removeEventListener('pointerup', up); sp.removeEventListener('pointercancel', up); ch(); };
+    sp.addEventListener('pointermove', mv); sp.addEventListener('pointerup', up); sp.addEventListener('pointercancel', up);
+  });
   imgCol(ci, ex, ch, true); descCol(cd, ex, ch, true);
   card.appendChild(status);
   if (o.status) o.status(status);
@@ -1156,18 +1222,40 @@ function renderPlan(w) {
   card.appendChild(h('div', { class: 'lbl' }, 'Teilnehmer (' + P.names.length + ')'));
   var namesBox = chipInput(P.names, 'names', function () { chTr(); }, { ph: 'Name …', n: 14 });
   card.appendChild(namesBox);
-  var shots = h('div', { class: 'thumbs', style: 'margin-top:8px' });
+  var shots = h('div');
+  var addShot = function (r) { P.shots.push({ src: r.src, w: 600, h: Math.round(600 * r.h / r.w), strokes: [], wpct: 32 }); chTr(); drawShots(); layoutAll(); updToolbar(); };
   function drawShots() {
     shots.innerHTML = '';
+    var row = h('div', { class: 'shotrow' }); shots.appendChild(row);
     P.shots.forEach(function (sh, i) {
-      shots.appendChild(shotThumb(sh, function () { openShot(tr, i, function () { drawShots(); layoutAll(); }); },
-        async function () { if (await ask('Screenshot entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { P.shots.splice(i, 1); chTr(); drawShots(); layoutAll(); } }));
+      var box = h('div', { class: 'shotbox', style: 'width:' + (sh.wpct || 32) + '%' }); row.appendChild(box);
+      if (!sh.h) { var im = imgFor(sh.src); var fix = function () { sh.h = Math.round(600 * im.naturalHeight / im.naturalWidth) || 800; chTr(); drawShots(); layoutAll(); }; if (im.complete && im.naturalWidth) fix(); else im._cbs.push(fix); return; }
+      var ph = h('div'); box.appendChild(ph);
+      new Pad(ph, sh, { bg: 'none', img: sh.src, editable: true, onChange: chTr });
+      box.appendChild(h('div', { class: 'sbtn' },
+        h('button', { title: 'Vollbild', onclick: function () { openShot(tr, i, function () { drawShots(); layoutAll(); }); } }, '⤢'),
+        h('button', { title: 'Entfernen', onclick: async function () { if (await ask('Screenshot entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { P.shots.splice(i, 1); chTr(); drawShots(); layoutAll(); updToolbar(); } } }, '×')));
+      var hd = h('div', { class: 'rsz', title: 'Größe ziehen', style: 'top:44px;bottom:auto' }, '⤡'); box.appendChild(hd);
+      hd.addEventListener('pointerdown', function (e) {
+        e.preventDefault(); e.stopPropagation(); try { hd.setPointerCapture(e.pointerId); } catch (_) {}
+        var rr = row.getBoundingClientRect(), bl = box.getBoundingClientRect().left;
+        var mv = function (ev) { sh.wpct = Math.max(15, Math.min(100, Math.round((ev.clientX - bl) / rr.width * 100))); box.style.width = sh.wpct + '%'; };
+        var up = function () { hd.removeEventListener('pointermove', mv); hd.removeEventListener('pointerup', up); hd.removeEventListener('pointercancel', up); chTr(); };
+        hd.addEventListener('pointermove', mv); hd.addEventListener('pointerup', up); hd.addEventListener('pointercancel', up);
+      });
     });
-    shots.appendChild(h('button', { class: 'btn ghost', style: 'height:110px', onclick: async function () {
-      var fs = await pickFile('image/*', true);
-      for (var i = 0; i < fs.length; i++) { try { var r0 = await blobToImg(fs[i], 1400); P.shots.push({ src: r0.src, w: 600, h: Math.round(600 * r0.h / r0.w), strokes: [] }); } catch (e) {} }
-      chTr(); drawShots();
-    } }, '+ Screenshot'));
+    shots.appendChild(h('div', { class: 'row', style: 'margin-top:8px' },
+      h('button', { class: 'btn sm', onclick: async function () {
+        var fs = await pickFile('image/*', true);
+        for (var i = 0; i < fs.length; i++) { try { var r0 = await blobToImg(fs[i], 1400); P.shots.push({ src: r0.src, w: 600, h: Math.round(600 * r0.h / r0.w), strokes: [], wpct: 32 }); } catch (e) {} }
+        chTr(); drawShots(); layoutAll(); updToolbar();
+      } }, '🖼 Screenshot (Foto/Datei)'),
+      h('button', { class: 'btn sm', onclick: async function () {
+        pasteTarget = { t: Date.now(), cb: addShot };
+        try { var b = await clipboardImage(); pasteTarget = null; addShot(await blobToImg(b, 1400)); }
+        catch (e) { toast(navigator.clipboard && navigator.clipboard.read ? 'Kein Bild in der Zwischenablage. Erst einen Screenshot machen bzw. kopieren.' : 'Jetzt ⌘V / Strg+V drücken.', 4000); }
+      } }, '📋 Screenshot einfügen')));
+    if (P.shots.length) shots.appendChild(h('div', { class: 'note' }, 'Mit dem Stift direkt auf den Screenshot schreiben. Größe am blauen Punkt ziehen, ⤢ öffnet das Vollbild.'));
   }
   drawShots(); card.appendChild(shots);
   card.appendChild(h('div', { class: 'lbl' }, 'Positionen (optional)'));
@@ -1274,7 +1362,7 @@ function exRow(e, onClick) {
       h('div', null, e.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), e.tags.map(function (g) { return h('span', { class: 'chip tag' }, g); })),
       htmlText(e.desc.html).trim() ? h('div', { class: 'muted', style: 'margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, htmlText(e.desc.html).trim().split('\n')[0]) : null));
   if (e.img) new Pad(th, e.img.ink, { bg: e.img.bg, img: e.img.src });
-  else if (hasInk(e.desc.ink)) new Pad(th, { w: 600, h: Math.min(e.desc.ink.h, 360), strokes: e.desc.ink.strokes }, { bg: 'lines' });
+  else if (hasInk(e.desc.ink)) new Pad(th, { w: 600, h: Math.min(e.desc.ink.h, 360), strokes: e.desc.ink.strokes }, { bg: lineBg() });
   else th.style.width = '0';
   return row;
 }
@@ -1430,7 +1518,7 @@ function runItem(tr, it) {
       var rt = richEditor(it.note.html, function (v) { it.note.html = v; markTr(tr); }, 'Notiz eintippen …', 50); nb.appendChild(rt);
       if (nb._focus) { nb._focus = false; setTimeout(function () { var e = rt.querySelector('.rte'); if (e) e.focus(); }, 0); }
     }
-    if (showI) { var ph = h('div', { style: 'margin-top:6px' }); nb.appendChild(ph); new Pad(ph, it.note.ink, { bg: 'lines', editable: true, grow: true, onChange: function () { markTr(tr); } }); }
+    if (showI) { var ph = h('div', { style: 'margin-top:6px' }); nb.appendChild(ph); new Pad(ph, it.note.ink, { bg: lineBg(), editable: true, grow: true, onChange: function () { markTr(tr); } }); addGrip(nb, ph._pad, it.note.ink, function () { markTr(tr); }, 120); }
     if (!showT || !showI) nb.appendChild(h('div', { class: 'row', style: 'margin-top:8px' },
       !showT ? h('button', { class: 'btn sm', onclick: function () { add('t'); } }, '+ ⌨ Notiz') : null,
       !showI ? h('button', { class: 'btn sm', onclick: function () { add('i'); } }, '+ ✎ Notiz') : null));
@@ -1489,6 +1577,9 @@ function openZoom(d, bg, src, opts) {
       ['p0', 'p1', 'p2', 'hl', 'er'].forEach(function (t) {
         vt.appendChild(h('button', { class: 'tb' + (t === tool ? ' on' : ''), html: t[0] === 'p' ? ic.pen(S.slots[+t[1]].c, S.slots[+t[1]].w) : t === 'hl' ? ic.hl(S.hl.c) : ic.er, onclick: function () { tool = t; refreshPens(); drawVt(); } }));
       });
+      vt.appendChild(h('div', { class: 'vsep' }));
+      modButtons(drawVt).forEach(function (b) { vt.appendChild(b); });
+      vt.appendChild(h('div', { class: 'vsep' }));
       vt.appendChild(h('button', { class: 'tb', title: 'Rückgängig', html: $('#undo').innerHTML, onclick: function () { if (UNDO.length && UNDO[UNDO.length - 1].d === annot) swapUndo(UNDO, REDO); } }));
     };
     drawVt(); ov.appendChild(vt);
@@ -1542,7 +1633,7 @@ function openText(ex) {
     body.innerHTML = '';
     body.appendChild(h('h2', { style: 'margin-top:0' }, exLabel(ex)));
     if (htmlText(ex.desc.html).trim()) body.appendChild(h('div', { class: 'big rtx', style: 'font-size:' + S.fs + 'px', html: sanitize(ex.desc.html) }));
-    if (hasInk(ex.desc.ink)) { var ph = h('div', { style: 'max-width:' + Math.round(S.fs / 26 * 900) + 'px' }); body.appendChild(ph); var p = new Pad(ph, ex.desc.ink, { bg: 'lines' }); setTimeout(function () { p.layout(true); }, 0); }
+    if (hasInk(ex.desc.ink)) { var ph = h('div', { style: 'max-width:' + Math.round(S.fs / 26 * 900) + 'px' }); body.appendChild(ph); var p = new Pad(ph, ex.desc.ink, { bg: lineBg() }); setTimeout(function () { p.layout(true); }, 0); }
   }
   ov.appendChild(h('div', { class: 'vbar' },
     h('button', { onclick: function () { S.fs = Math.max(16, S.fs - 4); saveS(); draw(); } }, 'A−'),
@@ -1910,6 +2001,8 @@ function openSettings() {
       rg.addEventListener('input', function () { S.sens = rg.value / 100; saveS(); });
       box.appendChild(rg); box.appendChild(h('div', { class: 'note' }, 'Wenig ← Wirkung des Drucks → stark (gilt für neue Striche)'));
     }
+    box.appendChild(h('div', { class: 'lbl' }, 'Schreibflächen'));
+    box.appendChild(segCtl([[true, 'Liniert'], [false, 'Blanko']], S.lines !== false, function (v) { S.lines = v; saveS(); draw(); render(); }));
     box.appendChild(h('div', { class: 'lbl' }, 'Finger auf den Schreibflächen'));
     box.appendChild(segCtl([[false, 'Scrollt (empfohlen)'], [true, 'Schreibt']], S.finger, function (v) { S.finger = v; saveS(); draw(); render(); }));
     box.appendChild(h('div', { class: 'note' }, '„Schreibt“ nur für Geräte ohne Stift (z. B. iPhone). Dann scrollt man außerhalb der Schreibflächen.'));
@@ -1927,17 +2020,17 @@ function openHelp() {
     '<li><b>Android:</b> Adresse in Chrome öffnen → ⋮ → „App installieren“ bzw. „Zum Startbildschirm hinzufügen“.</li>' +
     '<li><b>Mac:</b> Safari → Ablage → „Zum Dock hinzufügen“, oder Lesezeichen.</li>' +
     '<li>Die App läuft danach offline. Neue Version: App mit Internet öffnen → grüne Leiste antippen.</li></ul>' +
-    '<h3>Planen</h3><ul><li>„+ Neues Training“: Datum, Beginn, Ort, Teilnehmer (Namen oder Screenshots, z. B. aus Spond), optional Positionen. Screenshot antippen → Vollbild, dort mit dem Stift abhaken oder ergänzen; × entfernt ihn.</li>' +
+    '<h3>Planen</h3><ul><li>„+ Neues Training“: Datum, Beginn, Ort, Teilnehmer (Namen oder Screenshots, z. B. aus Spond), optional Positionen. Screenshots per „Foto/Datei“ oder „📋 Screenshot einfügen“ (Zwischenablage). Man kann direkt mit dem Stift darauf schreiben; Größe am blauen Punkt ziehen; ⤢ Vollbild; × entfernt.</li>' +
     '<li>Ein <b>Block</b> hat eine Dauer; daraus werden die Uhrzeiten berechnet. In einem Block können mehrere Übungen parallel laufen (Feld angeben).</li>' +
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
     '<li>Ziele, Stichworte, Namen, Orte und Felder lernt die App und schlägt sie wieder vor.</li>' +
     '<li><b>Beschreibung:</b> Eine leere Übung zeigt eine Schreibfläche für den Stift. Mit „+ ⌨ Text“ bzw. „+ ✎ Handschrift“ kommt das andere Feld dazu. Felder, die leer bleiben, verschwinden beim nächsten Öffnen wieder.</li>' +
     '<li><b>Text formatieren:</b> Leiste über dem Textfeld (fett, kursiv, unterstrichen, Aufzählung, nummerierte Liste, Einzug für Unterpunkte). „- “ oder „1. “ am Zeilenanfang startet automatisch eine Liste.</li>' +
-    '<li><b>Bildgröße:</b> am blauen Punkt unten rechts am Bild ziehen. Der Text daneben bekommt den restlichen Platz.</li>' +
+    '<li><b>Aufteilung:</b> Beim Planen steht der Text links, das Bild rechts. Die graue Leiste dazwischen ziehen, um die Breite zu ändern. Die graue Leiste unter der Handschriftfläche ziehen, um die Höhe zu ändern. Liniert oder blanko: ☰ → Einstellungen.</li>' +
     '<li><b>Bild kopieren:</b> „⧉ Kopieren“ unter dem Bild (mit allen Strichen), z. B. um es in eine andere App einzufügen.</li></ul>' +
     '<h3>Schreiben mit dem Stift</h3><ul><li>Nur der Stift schreibt; Finger und Handballen scrollen nicht, solange geschrieben wird.</li>' +
-    '<li>Werkzeuge oben: drei Stifte, Textmarker, Radierer. <b>Aktives Werkzeug nochmals antippen</b> → Farbe und Stärke (Radierer: ganzer Strich oder nur Bereich).</li>' +
+    '<li>Werkzeuge oben: drei Stifte, Textmarker, Radierer; dahinter die Schalter <b>／ gerade Linie</b>, <b>┄ gestrichelt</b> und <b>➜ Pfeil am Ende</b> (für die Stifte, einzeln oder kombiniert, wie beim Coaching Board). <b>Aktives Werkzeug nochmals antippen</b> → Farbe und Stärke (Radierer: ganzer Strich oder nur Bereich).</li>' +
     '<li>Bild: Spielfeld, Halbfeld, leer, oder ein Bild einfügen. Aufstellung aus dem Coaching Board: dort „Kopieren“, hier „📋 Einfügen“ – oder dort „Export“ und hier „🖼 Foto/Datei“. Auf jedes Bild kann man malen.</li></ul>' +
     '<h3>Durchführen</h3><ul><li>Das Training als Liste. Bild oder Beschreibung antippen → Vollbild. Im Vollbild: zwei Finger zoomen, doppelt tippen vergrößert bzw. zurück.</li><li>Im Vollbild eines Bildes kann man mit dem Stift (am Mac mit der Maus) <b>malen</b>. Beim Schließen fragt die App, ob die Anmerkungen als Notiz gespeichert werden. Erneutes Öffnen zeigt sie wieder zum Weitermalen. Das Bild der Übung selbst bleibt unverändert.</li><li>„+ ⌨ Notiz“ bzw. „+ ✎ Notiz“ für Anmerkungen als Text oder mit dem Stift. Leere Notizfelder verschwinden wieder. „🗑 Notiz löschen“ entfernt die ganze Notiz einer Übung.</li></ul>' +
     '<h3>PDF</h3><ul><li>„🖨 PDF“ beim Planen oder Durchführen erstellt das Training als PDF (A4) mit Bildern, Beschreibungen und auf Wunsch den Notizen.</li><li>iPad/iPhone: „Teilen“ → „Drucken“ oder „In Dateien sichern“. Mac: „Öffnen“ und dort drucken, oder „Herunterladen“.</li></ul>' +
