@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="VB Training">
+<meta name="theme-color" content="#f5f5f2">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>VB Training</title>
+<style>
+:root{--ui:#f5f5f2;--line:#dcdcd6;--txt:#222;--acc:#1f4fd1;--bg:#eeeeea}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);font:16px -apple-system,system-ui,"Segoe UI",sans-serif;color:var(--txt);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;overscroll-behavior:none}
+input,textarea,select{-webkit-user-select:text;user-select:text;font:inherit;font-size:16px;color:var(--txt);border:1px solid #d3d3cc;border-radius:9px;padding:8px 10px;background:#fff;max-width:100%}
+textarea{width:100%;resize:none;line-height:1.4;min-height:90px}
+button{font:inherit;color:inherit;cursor:pointer}
+#top{flex:none;background:var(--ui);border-bottom:1px solid var(--line);padding:env(safe-area-inset-top) calc(8px + env(safe-area-inset-right)) 0 calc(8px + env(safe-area-inset-left));display:flex;align-items:center;gap:6px;min-height:calc(52px + env(safe-area-inset-top))}
+#top .app{font-weight:700;font-size:17px;margin-right:6px;white-space:nowrap}
+.tabs{display:flex;background:#e6e6e1;border-radius:11px;padding:3px;gap:2px;overflow-x:auto}
+.tabs button{border:0;background:transparent;padding:8px 12px;border-radius:9px;white-space:nowrap;font-size:15px}
+.tabs button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15);font-weight:600}
+.sp{flex:1}
+.ib{border:0;background:transparent;width:44px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;position:relative;flex:none}
+.ib.dot:after{content:'';position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:#e07b00}
+#upd{flex:none;display:none;background:#2e9a3a;color:#fff;text-align:center;padding:10px;font-weight:600;cursor:pointer}
+#pens{flex:none;display:none;background:var(--ui);border-bottom:1px solid var(--line);padding:2px calc(8px + env(safe-area-inset-right)) 2px calc(8px + env(safe-area-inset-left));align-items:center;gap:2px;overflow-x:auto}
+#pens.show{display:flex}
+.tb{width:48px;height:44px;border:0;border-radius:10px;background:transparent;display:flex;align-items:center;justify-content:center;padding:0;flex:none}
+.tb.on{background:#e0e0da}.tb[disabled]{opacity:.3}
+.tb svg{width:30px;height:30px;display:block}
+.vsep{width:1px;height:26px;background:var(--line);margin:0 6px;flex:none}
+#main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 calc(10px + env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left))}
+.wrap{max-width:1150px;margin:0 auto}
+.card{background:#fff;border:1px solid #e1e1db;border-radius:14px;padding:12px 14px;margin:12px 0}
+.block{background:#f8f8f5;border:1px solid #d9d9d2;border-radius:16px;padding:10px 12px;margin:16px 0}
+.bhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bhead h3{margin:0;font-size:17px}
+.time{background:#e8eefb;color:#1d3f8f;border-radius:8px;padding:3px 8px;font-weight:600;font-size:15px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.lbl{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#888;font-weight:600;margin:10px 0 5px}
+.btn{border:0;background:#e9e9e4;border-radius:10px;padding:9px 13px;font-size:15px;white-space:nowrap}
+.btn.pri{background:var(--acc);color:#fff}
+.btn.warn{color:#c0392b}
+.btn.sm{padding:6px 10px;font-size:14px}
+.btn.ghost{background:transparent;border:1px dashed #bbb}
+.btn[disabled]{opacity:.4}
+h2{font-size:20px;margin:16px 0 8px}
+.muted{color:#888;font-size:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:#e3ebfb;color:#1d3f8f;border-radius:16px;padding:6px 11px;margin:2px 3px 2px 0;font-size:14px;border:0;line-height:1.2}
+.chip.sug{background:#f0f0eb;color:#555}
+.chip.sug:before{content:'+';font-weight:700}
+.chip.tag{background:#eee7f8;color:#5a2f99}
+.chip.on{background:var(--acc);color:#fff}
+.chip .x{font-weight:700;opacity:.6}
+.chipin input{border:0;padding:6px 4px;min-width:120px;outline:none;background:transparent}
+.chipbox{border:1px solid #d3d3cc;border-radius:10px;padding:3px 6px;background:#fff;display:flex;flex-wrap:wrap;align-items:center}
+.sugs{margin-top:4px}
+.pos{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pc{display:flex;align-items:center;background:#f1f1ec;border-radius:10px;padding:2px}
+.pc b{min-width:30px;text-align:center;font-size:13px;color:#555}
+.pc span{min-width:24px;text-align:center;font-weight:600}
+.pc button{border:0;background:#fff;width:32px;height:32px;border-radius:8px;font-size:18px;line-height:1}
+.sum{font-weight:600}
+.seg{display:inline-flex;background:#ececea;border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;padding:7px 11px;border-radius:8px;font-size:14px;white-space:nowrap}
+.seg button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.cols{display:flex;gap:14px;align-items:flex-start}
+.cols>div{flex:1;min-width:0}
+@media (max-width:720px){.cols{flex-direction:column}.cols>div{width:100%}}
+.pad{position:relative;border:1px solid #dcdcd5;border-radius:8px;overflow:hidden;background:#fff;touch-action:pan-y;width:100%}
+.pad.finger{touch-action:none}
+.pad canvas{position:absolute;left:0;top:0;pointer-events:none}
+.pad.view{cursor:zoom-in}
+.ex .head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ex .title{flex:1;min-width:180px;font-weight:600}
+.status{margin-top:10px;padding:8px 10px;border-radius:9px;font-size:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.status.ok{background:#eaf6ec;color:#256b30}
+.status.warn{background:#fff3e0;color:#9a5a00}
+.status.chg{background:#e8eefb;color:#1d3f8f}
+.req{color:#c0392b}
+.trow{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#fff;border:1px solid #e1e1db;border-radius:12px;margin:8px 0;cursor:pointer}
+.trow .t{flex:1;min-width:0}
+.trow .t b{display:block}
+.badge{font-size:12px;background:#2e9a3a;color:#fff;border-radius:6px;padding:2px 6px;margin-left:6px}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.thumb{position:relative;width:84px;height:110px;border-radius:8px;overflow:hidden;border:1px solid #ddd;background:#fafafa}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .del{position:absolute;top:2px;right:2px;border:0;background:rgba(0,0,0,.6);color:#fff;border-radius:50%;width:26px;height:26px}
+.exrow{display:flex;gap:12px;padding:10px;background:#fff;border:1px solid #e1e1db;border-radius:12px;margin:8px 0;cursor:pointer;align-items:flex-start}
+.exrow .th{width:130px;flex:none}
+.exrow .info{flex:1;min-width:0}
+.txt{white-space:pre-wrap;line-height:1.45;-webkit-user-select:text;user-select:text}
+.runtxt{white-space:pre-wrap;line-height:1.45;font-size:17px;padding:8px 10px;background:#fafaf7;border-radius:8px;margin-bottom:8px;cursor:zoom-in}
+.field{background:#fdebd0;color:#8a4b00;border-radius:7px;padding:2px 8px;font-weight:600;font-size:14px}
+.pop{position:fixed;z-index:40;background:#fff;border-radius:14px;box-shadow:0 10px 34px rgba(0,0,0,.22);padding:10px 14px 14px;width:max-content;max-width:min(94vw,380px)}
+.pop h4{margin:10px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#888;font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(5,42px);gap:8px}
+.sw{width:40px;height:40px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #ccc;padding:0}
+.sw.on{box-shadow:0 0 0 3px var(--acc)}
+.wd{width:48px;height:44px;border:0;border-radius:9px;background:#f2f2ef;display:flex;align-items:center;justify-content:center;padding:0}
+.wd.on{background:#dbe6fb;box-shadow:inset 0 0 0 2px var(--acc)}
+.menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:12px 8px;border-radius:9px;font-size:16px}
+.menu button:active{background:#f0f0ec}
+.note{font-size:12px;color:#888;margin-top:4px}
+input[type=range]{width:100%;height:34px}
+.modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.35);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px}
+.mbox{background:#fff;border-radius:16px;padding:18px;max-width:440px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.mtxt{margin-bottom:14px;line-height:1.45}
+.mbtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.viewer{position:fixed;top:0;left:0;right:0;bottom:0;background:#2a2a2a;z-index:50;touch-action:none}
+.viewer canvas{position:absolute;left:0;top:0;width:100%;height:100%}
+.vbar{position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));display:flex;gap:8px;z-index:2}
+.vbar button{border:0;background:rgba(255,255,255,.92);border-radius:12px;min-width:46px;height:46px;font-size:20px;padding:0 12px}
+.tview{position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;z-index:50;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(66px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) 40px calc(18px + env(safe-area-inset-left))}
+.tview .vbar button{background:#ececea}
+.tview .big{white-space:pre-wrap;line-height:1.45;margin-bottom:16px}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:rgba(30,30,30,.92);color:#fff;padding:10px 16px;border-radius:12px;font-size:15px;z-index:70;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;text-align:center}
+#toast.show{opacity:1}
+.help h3{margin:18px 0 6px}
+.help p,.help li{line-height:1.45}
+.empty{padding:30px 10px;text-align:center;color:#888}
+@media (max-width:540px){#top .app{display:none}.tabs button{padding:8px 9px}}
+</style>
+</head>
+<body>
+<div id="top">
+  <span class="app">VB Training</span>
+  <div class="tabs">
+    <button data-view="plan">Planen</button>
+    <button data-view="run">Durchführen</button>
+    <button data-view="ex">Übungen</button>
+  </div>
+  <div class="sp"></div>
+  <button class="ib" id="menuBtn" title="Menü">☰</button>
+</div>
+<div id="upd">Neue Version bereit – hier tippen zum Aktualisieren</div>
+<div id="pens">
+  <button class="tb" data-tool="p0" title="Stift 1"></button>
+  <button class="tb" data-tool="p1" title="Stift 2"></button>
+  <button class="tb" data-tool="p2" title="Stift 3"></button>
+  <button class="tb" data-tool="hl" title="Textmarker"></button>
+  <button class="tb" data-tool="er" title="Radierer"></button>
+  <div class="vsep"></div>
+  <button class="tb" id="undo" title="Rückgängig"><svg viewBox="0 0 30 30"><path d="M10 8l-5 5 5 5" fill="none" stroke="#333" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13h12a6.5 6.5 0 0 1 0 13h-4" fill="none" stroke="#333" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+  <button class="tb" id="redo" title="Wiederholen"><svg viewBox="0 0 30 30" style="transform:scaleX(-1)"><path d="M10 8l-5 5 5 5" fill="none" stroke="#333" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13h12a6.5 6.5 0 0 1 0 13h-4" fill="none" stroke="#333" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+</div>
+<div id="main"></div>
+<div id="toast"></div>
+<input type="file" id="fileIn" style="display:none">
+
+<script>
+'use strict';
+var VERSION = '0.9';
+var $ = function (q) { return document.querySelector(q); };
+var now = function () { return performance.now(); };
+var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
+var clone = function (o) { return JSON.parse(JSON.stringify(o)); };
+var POS = ['A', 'MB', 'D', 'Z', 'L'];
+var POS_NAME = { A: 'Außen', MB: 'Mittelblock', D: 'Diagonal', Z: 'Zuspiel', L: 'Libero' };
+var GOAL_SEED = ['Annahme', 'Angriff', 'Angriff 4', 'Angriff 2', 'Angriff Mitte', 'Angriff Rückraum', 'Angriff Pipe', 'Block', 'Abwehr', 'Aufschlag', 'Technik', 'Ballsicherheit'];
+var INK_C = ['#1a1a1a', '#5f5f5f', '#1f4fd1', '#0a8aa0', '#d02a2a', '#e07b00', '#2e9a3a', '#7a3fc4', '#8a5a2b', '#e0409a'];
+var HL_C = ['#fff176', '#b9f5a8', '#ffb8dc', '#a8dcff', '#ffcf8a'];
+var INK_W = [0.9, 1.6, 2.6, 4, 6.5];
+var HL_W = [10, 18, 28];
+var ER_R = [['S', 6], ['M', 12], ['L', 26]];
+var DEF_SET = {
+  slots: [{ c: '#1a1a1a', w: 1.6 }, { c: '#1f4fd1', w: 1.6 }, { c: '#d02a2a', w: 2.6 }],
+  hl: { c: '#fff176', w: 18 }, er: { mode: 'stroke', r: 12 },
+  pressure: true, sens: 0.7, finger: false, fs: 26
+};
+
+/* ================= DOM-Helfer ================= */
+function h(tag, a) {
+  var e = document.createElement(tag);
+  if (a) for (var n in a) {
+    var v = a[n];
+    if (v == null || v === false) continue;
+    if (n === 'class') e.className = v;
+    else if (n === 'style') e.style.cssText = v;
+    else if (n.slice(0, 2) === 'on') e.addEventListener(n.slice(2), v);
+    else if (n === 'html') e.innerHTML = v;
+    else if (n in e && n !== 'list' && n !== 'type') e[n] = v;
+    else e.setAttribute(n, v === true ? '' : v);
+  }
+  for (var i = 2; i < arguments.length; i++) add(e, arguments[i]);
+  return e;
+}
+function add(e, c) {
+  if (c == null || c === false) return;
+  if (Array.isArray(c)) { c.forEach(function (x) { add(e, x); }); return; }
+  e.appendChild(typeof c === 'object' ? c : document.createTextNode(String(c)));
+}
+var toastT = 0;
+function toast(msg, ms) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, ms || 3000); }
+function ask(msg, btns) {
+  return new Promise(function (res) {
+    var ov = h('div', { class: 'modal' }, h('div', { class: 'mbox' }, h('div', { class: 'mtxt' }, msg),
+      h('div', { class: 'mbtns' }, btns.map(function (b) { return h('button', { class: 'btn ' + (b[2] || ''), onclick: function () { ov.remove(); res(b[1]); } }, b[0]); }))));
+    document.body.appendChild(ov);
+  });
+}
+function autoGrow(ta) { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; }
+function todayISO() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function fmtDate(iso) { if (!iso) return 'Ohne Datum'; var d = new Date(iso + 'T00:00:00'); return d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }); }
+function parseTime(t) { if (!t) return null; var m = /^(\d{1,2}):(\d{2})/.exec(t); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+function fmtTime(m) { m = ((m % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+
+/* ================= Datenbank (IndexedDB) ================= */
+var DB = { ex: new Map(), tr: new Map(), kv: { lex: {}, settings: null, last: {}, deleted: {}, backup: null, dirty: false } };
+var idb = null;
+function idbOpen() {
+  return new Promise(function (res, rej) {
+    var r = indexedDB.open('vbtrain', 1);
+    r.onupgradeneeded = function () { var d = r.result; d.createObjectStore('ex', { keyPath: 'id' }); d.createObjectStore('tr', { keyPath: 'id' }); d.createObjectStore('kv'); };
+    r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); };
+  });
+}
+function idbAll(store, keys) {
+  return new Promise(function (res, rej) {
+    var t = idb.transaction(store), s = t.objectStore(store);
+    var r = keys ? s.getAllKeys() : s.getAll(); r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); };
+  });
+}
+function idbPut(store, val, key) { if (!idb) return; try { var t = idb.transaction(store, 'readwrite'); key == null ? t.objectStore(store).put(val) : t.objectStore(store).put(val, key); } catch (e) { toast('Speichern fehlgeschlagen'); } }
+function idbDel(store, key) { if (!idb) return; try { idb.transaction(store, 'readwrite').objectStore(store).delete(key); } catch (e) {} }
+var dirtyEx = new Set(), dirtyTr = new Set(), dirtyKv = new Set(), saveTimer = 0;
+function schedule() { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 500); }
+function flush() {
+  dirtyEx.forEach(function (id) { var e = DB.ex.get(id); if (e) idbPut('ex', e); }); dirtyEx.clear();
+  dirtyTr.forEach(function (id) { var e = DB.tr.get(id); if (e) idbPut('tr', e); }); dirtyTr.clear();
+  dirtyKv.forEach(function (k) { idbPut('kv', DB.kv[k], k); }); dirtyKv.clear();
+}
+function markEx(ex) { ex.updated = Date.now(); dirtyEx.add(ex.id); setDirty(); schedule(); }
+function markTr(tr) { tr.updated = Date.now(); dirtyTr.add(tr.id); setDirty(); schedule(); }
+function markKv(k) { dirtyKv.add(k); schedule(); }
+function setDirty() { if (!DB.kv.dirty) { DB.kv.dirty = true; markKv('dirty'); updMenuDot(); } }
+window.addEventListener('pagehide', flush);
+document.addEventListener('visibilitychange', function () { if (document.hidden) flush(); });
+function delEx(id) { DB.ex.delete(id); idbDel('ex', id); DB.kv.deleted[id] = Date.now(); markKv('deleted'); setDirty(); }
+function delTr(id) { DB.tr.delete(id); idbDel('tr', id); DB.kv.deleted[id] = Date.now(); markKv('deleted'); setDirty(); }
+function learn(kind, v) { v = String(v).trim(); if (!v) return; var L = DB.kv.lex; L[kind] = L[kind] || {}; L[kind][v] = (L[kind][v] || 0) + 1; markKv('lex'); }
+function suggest(kind, exclude, q, n) {
+  var L = DB.kv.lex[kind] || {}, words = Object.keys(L);
+  if (kind === 'goals') GOAL_SEED.forEach(function (g) { if (!(g in L)) words.push(g); });
+  q = (q || '').trim().toLowerCase();
+  var ex = (exclude || []).map(function (x) { return x.toLowerCase(); });
+  return words.filter(function (w) { return ex.indexOf(w.toLowerCase()) < 0 && (!q || w.toLowerCase().indexOf(q) >= 0); })
+    .sort(function (a, b) {
+      var sa = q && a.toLowerCase().indexOf(q) === 0 ? 1 : 0, sb = q && b.toLowerCase().indexOf(q) === 0 ? 1 : 0;
+      if (sa !== sb) return sb - sa;
+      var ca = L[a] || 0, cb = L[b] || 0;
+      if (kind === 'goals' && !ca && !cb) return GOAL_SEED.indexOf(a) - GOAL_SEED.indexOf(b);
+      return cb - ca || a.localeCompare(b, 'de');
+    }).slice(0, n || 12);
+}
+var S = clone(DEF_SET);
+function saveS() { DB.kv.settings = S; markKv('settings'); }
+
+/* ================= Modelle ================= */
+function zeroPos() { return { A: 0, MB: 0, D: 0, Z: 0, L: 0 }; }
+function posSum(p) { var s = 0; POS.forEach(function (k) { s += (p && p[k]) || 0; }); return s; }
+function players(ex) { return ex.pmode === 'pos' ? posSum(ex.pos) : (ex.total || 0); }
+function posText(p) { return POS.filter(function (k) { return p[k]; }).map(function (k) { return k + ' ' + p[k]; }).join(' · '); }
+function newEx(tr) {
+  var p = tr ? posSum(tr.participants.pos) : 0, n = tr ? tr.participants.names.length : 0;
+  return {
+    id: uid(), title: '', goals: [], tags: [], pmode: p ? 'pos' : 'total', pos: p ? clone(tr.participants.pos) : zeroPos(), total: p || n || 0,
+    desc: { text: '', ink: { w: 600, h: 240, strokes: [] }, showInk: true, showText: false }, img: null,
+    created: Date.now(), updated: Date.now(), variantOf: null
+  };
+}
+function newBlock() { return { id: uid(), dur: null, items: [] }; }
+function newTr() {
+  var last = DB.kv.last || {};
+  return { id: uid(), date: todayISO(), time: last.time || '', place: last.place || '', participants: { names: [], shots: [], pos: zeroPos() }, blocks: [newBlock()], created: Date.now(), updated: Date.now() };
+}
+function hasDesc(ex) { return !!((ex.desc.text || '').trim() || ex.desc.ink.strokes.length); }
+function sig(ex) { return JSON.stringify([ex.title, ex.goals, ex.tags, ex.pmode, ex.pmode === 'pos' ? ex.pos : ex.total, ex.desc.text, ex.desc.ink.strokes, ex.img]); }
+function blockTimes(tr) {
+  var out = [], t = parseTime(tr.time);
+  tr.blocks.forEach(function (b) {
+    if (t == null) { out.push(null); return; }
+    var d = +b.dur;
+    if (!d) { out.push({ s: t, e: null }); t = null; return; }
+    out.push({ s: t, e: t + d }); t += d;
+  });
+  return out;
+}
+function timeLabel(x) { return !x ? '' : x.e == null ? 'ab ' + fmtTime(x.s) : fmtTime(x.s) + '–' + fmtTime(x.e); }
+function exLabel(ex) { return ex.title || (ex.goals.length ? ex.goals.join(', ') : 'Übung ohne Titel'); }
+
+/* ================= Tinte: Geometrie ================= */
+function rad(s, p) {
+  if (s.t === 'h') return s.w / 2;
+  var f = 0.35 + 2.2 * Math.pow(p, 0.8); if (f > 2.4) f = 2.4;
+  f = 1 + (f - 1) * s.k;
+  return Math.max(0.25, s.w * f / 2);
+}
+function disc(P, x, y, r) { P.moveTo(x + r, y); P.arc(x, y, r, 0, 6.283185307179586, false); P.closePath(); }
+function quad(P, ax, ay, anx, any, ar, bx, by, bnx, bny, br) {
+  if (anx * bnx + any * bny < 0) { bnx = -bnx; bny = -bny; }
+  var x1 = ax + anx * ar, y1 = ay + any * ar, x2 = bx + bnx * br, y2 = by + bny * br, x3 = bx - bnx * br, y3 = by - bny * br, x4 = ax - anx * ar, y4 = ay - any * ar;
+  var A = (x1 * y2 - x2 * y1) + (x2 * y3 - x3 * y2) + (x3 * y4 - x4 * y3) + (x4 * y1 - x1 * y4);
+  if (Math.abs(A) < 1e-7) return;
+  P.moveTo(x1, y1);
+  if (A > 0) { P.lineTo(x2, y2); P.lineTo(x3, y3); P.lineTo(x4, y4); } else { P.lineTo(x4, y4); P.lineTo(x3, y3); P.lineTo(x2, y2); }
+  P.closePath();
+}
+function chordQuad(P, ax, ay, ar, bx, by, br) { var dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy); if (d < 1e-4) return; quad(P, ax, ay, -dy / d, dx / d, ar, bx, by, -dy / d, dx / d, br); }
+function cr(a, b, c, d, t) { return 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t); }
+function crd(a, b, c, d, t) { return 0.5 * ((-a + c) + 2 * (2 * a - 5 * b + 4 * c - d) * t + 3 * (-a + 3 * b - 3 * c + d) * t * t); }
+function seg(P, s, i0, i1, i2, i3, first) {
+  var q = s.p, a = i0 * 3, b = i1 * 3, c = i2 * 3, d = i3 * 3;
+  var x0 = q[a], y0 = q[a + 1], x1 = q[b], y1 = q[b + 1], p1 = q[b + 2], x2 = q[c], y2 = q[c + 1], p2 = q[c + 2], x3 = q[d], y3 = q[d + 1];
+  var cx = x2 - x1, cy = y2 - y1, cl = Math.hypot(cx, cy), step = Math.max(0.8, s.w);
+  var n = Math.max(1, Math.ceil(cl / step));
+  var px = 0, py = 0, pnx = 0, pny = 0, pr = 0;
+  for (var k = 0; k <= n; k++) {
+    var t = k / n;
+    var x = k === 0 ? x1 : k === n ? x2 : cr(x0, x1, x2, x3, t), y = k === 0 ? y1 : k === n ? y2 : cr(y0, y1, y2, y3, t);
+    var tx = crd(x0, x1, x2, x3, t), ty = crd(y0, y1, y2, y3, t), tl = Math.hypot(tx, ty);
+    if (tl < 1e-5) { tx = cx; ty = cy; tl = cl || 1; }
+    var nx = -ty / tl, ny = tx / tl, r = rad(s, p1 + (p2 - p1) * t);
+    if (k === 0) { if (first) disc(P, x, y, r); } else quad(P, px, py, pnx, pny, pr, x, y, nx, ny, r);
+    px = x; py = y; pnx = nx; pny = ny; pr = r;
+  }
+  disc(P, x2, y2, pr);
+}
+function hlPath(q) {
+  var P = new Path2D(), n = q.length / 3; P.moveTo(q[0], q[1]);
+  if (n === 1) { P.lineTo(q[0] + 0.01, q[1]); return P; }
+  for (var i = 1; i < n - 1; i++) P.quadraticCurveTo(q[i * 3], q[i * 3 + 1], (q[i * 3] + q[i * 3 + 3]) / 2, (q[i * 3 + 1] + q[i * 3 + 4]) / 2);
+  P.lineTo(q[n * 3 - 3], q[n * 3 - 2]); return P;
+}
+function buildPath(s) {
+  var q = s.p, n = q.length / 3;
+  if (s.t === 'h') return hlPath(q);
+  var P = new Path2D();
+  if (n === 1) { disc(P, q[0], q[1], rad(s, q[2])); return P; }
+  for (var i = 0; i < n - 1; i++) seg(P, s, Math.max(0, i - 1), i, i + 1, Math.min(n - 1, i + 2), i === 0);
+  return P;
+}
+var PATHS = new WeakMap(), BBS = new WeakMap();
+function pathOf(s) { var p = PATHS.get(s); if (!p) { p = buildPath(s); PATHS.set(s, p); } return p; }
+function bbOf(s) {
+  var b = BBS.get(s); if (b) return b;
+  var q = s.p, a = 1e9, bb = 1e9, c = -1e9, d = -1e9;
+  for (var i = 0; i < q.length; i += 3) { if (q[i] < a) a = q[i]; if (q[i] > c) c = q[i]; if (q[i + 1] < bb) bb = q[i + 1]; if (q[i + 1] > d) d = q[i + 1]; }
+  var m = (s.t === 'h' ? s.w / 2 : s.w * 1.25) + 1; b = [a - m, bb - m, c + m, d + m]; BBS.set(s, b); return b;
+}
+function drawStroke(ctx, s) {
+  if (s.t === 'h') {
+    ctx.globalCompositeOperation = 'multiply'; ctx.strokeStyle = s.c; ctx.lineWidth = s.w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.stroke(s.path || pathOf(s)); ctx.globalCompositeOperation = 'source-over';
+  } else { ctx.fillStyle = s.c; ctx.fill(pathOf(s)); }
+}
+function drawCourt(ctx, d, kind) {
+  var m, W, H, x, y;
+  ctx.fillStyle = '#f4e6cf'; ctx.strokeStyle = '#a9824f'; ctx.lineWidth = 2;
+  if (kind === 'court') {
+    m = Math.min((d.w - 30) / 18, (d.h - 30) / 9); W = 18 * m; H = 9 * m; x = (d.w - W) / 2; y = (d.h - H) / 2;
+    ctx.fillRect(x, y, W, H); ctx.strokeRect(x, y, W, H);
+    ctx.beginPath(); ctx.moveTo(x + 6 * m, y); ctx.lineTo(x + 6 * m, y + H); ctx.moveTo(x + 12 * m, y); ctx.lineTo(x + 12 * m, y + H); ctx.stroke();
+    ctx.lineWidth = 4; ctx.strokeStyle = '#555'; ctx.beginPath(); ctx.moveTo(x + 9 * m, y - 8); ctx.lineTo(x + 9 * m, y + H + 8); ctx.stroke();
+  } else {
+    m = Math.min((d.w - 30) / 9, (d.h - 45) / 9); W = 9 * m; H = 9 * m; x = (d.w - W) / 2; y = 28;
+    ctx.fillRect(x, y, W, H); ctx.strokeRect(x, y, W, H);
+    ctx.beginPath(); ctx.moveTo(x, y + 3 * m); ctx.lineTo(x + W, y + 3 * m); ctx.stroke();
+    ctx.lineWidth = 4; ctx.strokeStyle = '#555'; ctx.beginPath(); ctx.moveTo(x - 10, y); ctx.lineTo(x + W + 10, y); ctx.stroke();
+  }
+}
+function paintDrawing(ctx, d, bg, img, sc) {
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, d.w, d.h);
+  if (img) { try { ctx.drawImage(img, 0, 0, d.w, d.h); } catch (e) {} }
+  else if (bg === 'lines') {
+    ctx.strokeStyle = '#d9e3ee'; ctx.lineWidth = 1 / sc; ctx.beginPath();
+    for (var y = 32; y < d.h; y += 32) { ctx.moveTo(0, y); ctx.lineTo(d.w, y); }
+    ctx.stroke();
+  } else if (bg === 'court' || bg === 'half') drawCourt(ctx, d, bg);
+  for (var i = 0; i < d.strokes.length; i++) drawStroke(ctx, d.strokes[i]);
+}
+var IMGS = new Map();
+function imgFor(src, cb) {
+  if (!src) return null;
+  var im = IMGS.get(src);
+  if (!im) { im = new Image(); im.onload = function () { im._cbs.forEach(function (f) { f(); }); im._cbs = []; }; im._cbs = []; im.src = src; IMGS.set(src, im); if (IMGS.size > 60) IMGS.delete(IMGS.keys().next().value); }
+  if (!im.complete && cb) im._cbs.push(cb);
+  return im;
+}
+
+/* ================= Zeichenfläche (Pad) ================= */
+var allPads = new Set(), PADS = new WeakMap();
+var ro = window.ResizeObserver ? new ResizeObserver(function (ents) { ents.forEach(function (en) { var p = en.target._pad; if (p) p.layout(); }); }) : null;
+function Pad(host, d, o) {
+  this.host = host; this.d = d; this.o = o || {}; this.cw = 0;
+  host.classList.add('pad'); if (this.o.editable) { host.classList.add('editable'); if (S.finger) host.classList.add('finger'); } if (this.o.onTap) host.classList.add('view');
+  this.cv = document.createElement('canvas'); host.appendChild(this.cv); this.ctx = this.cv.getContext('2d');
+  host._pad = this; PADS.set(d, this); allPads.add(this);
+  if (ro) ro.observe(host);
+  var self = this;
+  if (this.o.img) this.im = imgFor(this.o.img, function () { self.render(); });
+  if (this.o.editable) bindPad(this);
+  else if (this.o.onTap) host.addEventListener('click', function () { self.o.onTap(); });
+}
+Pad.prototype.layout = function (force) {
+  var cw = this.host.clientWidth; if (!cw) return;
+  if (cw === this.cw && !force && this.ch === Math.round(this.d.h * cw / this.d.w)) return;
+  this.cw = cw; this.sc = cw / this.d.w; var ch = Math.round(this.d.h * this.sc); this.ch = ch;
+  this.host.style.height = ch + 'px';
+  var dpr = Math.min(window.devicePixelRatio || 1, 2.5); this.dpr = dpr;
+  this.cv.width = Math.round(cw * dpr); this.cv.height = Math.round(ch * dpr);
+  this.cv.style.width = cw + 'px'; this.cv.style.height = ch + 'px';
+  this.render();
+};
+Pad.prototype.setT = function (c) { c.setTransform(this.dpr * this.sc, 0, 0, this.dpr * this.sc, 0, 0); };
+Pad.prototype.render = function () {
+  if (!this.cw) return;
+  var c = this.ctx; c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, this.cv.width, this.cv.height);
+  this.setT(c); paintDrawing(c, this.d, this.o.bg, this.im && this.im.complete ? this.im : null, this.sc);
+};
+Pad.prototype.destroy = function () { if (ro) ro.unobserve(this.host); this.host._pad = null; };
+function padsReset() { allPads.forEach(function (p) { p.destroy(); }); allPads.clear(); }
+function layoutAll() { allPads.forEach(function (p) { if (p.host.isConnected) p.layout(); }); }
+window.addEventListener('resize', function () { setTimeout(layoutAll, 50); });
+
+/* ---------- Eingabe ---------- */
+var tool = 'p0', inp = null, penDown = false, lastPenUp = 0;
+var UNDO = [], REDO = [];
+var liveCv = document.createElement('canvas'), tipCv = document.createElement('canvas');
+var xL = liveCv.getContext('2d'), xT = tipCv.getContext('2d');
+function attachOverlay(pad) {
+  [liveCv, tipCv].forEach(function (c) {
+    if (c.parentNode !== pad.host) pad.host.appendChild(c);
+    if (c.width !== pad.cv.width || c.height !== pad.cv.height) { c.width = pad.cv.width; c.height = pad.cv.height; }
+    c.style.width = pad.cv.style.width; c.style.height = pad.cv.style.height;
+  });
+  clr(xL); clr(xT);
+}
+function clr(c) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, c.canvas.width, c.canvas.height); }
+var r1 = function (v) { return Math.round(v * 10) / 10; }, r2 = function (v) { return Math.round(v * 100) / 100; };
+function bindPad(pad) {
+  var host = pad.host;
+  host.addEventListener('pointerdown', function (e) { padDown(pad, e); });
+  host.addEventListener('pointermove', function (e) { if (inp && inp.pad === pad && e.pointerId === inp.id) padMove(e); });
+  var up = function (e) { if (inp && inp.pad === pad && e.pointerId === inp.id) padUp(); };
+  host.addEventListener('pointerup', up); host.addEventListener('pointercancel', up);
+}
+function padXY(e) { var I = inp; return [(e.clientX - I.rx) / I.pad.sc, (e.clientY - I.ry) / I.pad.sc]; }
+function padDown(pad, e) {
+  if (e.pointerType === 'touch' && !S.finger) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (inp || !pad.cw) return;
+  closePops();
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  e.preventDefault();
+  try { pad.host.setPointerCapture(e.pointerId); } catch (_) {}
+  var r = pad.host.getBoundingClientRect();
+  inp = { pad: pad, id: e.pointerId, type: e.pointerType, rx: r.left, ry: r.top };
+  if (e.pointerType === 'pen') penDown = true;
+  attachOverlay(pad);
+  var sc = pad.sc;
+  if (tool === 'er') {
+    inp.mode = 'er'; inp.before = pad.d.strokes.slice(); inp.changed = false;
+    var xy = padXY(e); inp.lx = xy[0]; inp.ly = xy[1];
+    if (eraseSeg(xy[0], xy[1], xy[0], xy[1])) pad.render();
+    eraserCursor(xy[0], xy[1]);
+  } else {
+    var isH = tool === 'hl', cfg = isH ? S.hl : S.slots[+tool[1]];
+    inp.mode = 'draw'; inp.ps = null; inp.P = new Path2D();
+    inp.s = { t: isH ? 'h' : 'p', c: cfg.c, w: r2(cfg.w / sc), k: S.pressure ? S.sens : 0, p: [] };
+    liveCv.style.mixBlendMode = isH ? 'multiply' : 'normal';
+    addPt(e);
+    if (isH) drawLiveHl(); else drawTip(e);
+  }
+}
+function addPt(ev) {
+  var I = inp, s = I.s, q = s.p, xy = padXY(ev), x = xy[0], y = xy[1];
+  var p = I.type === 'pen' ? ev.pressure : 0.27;
+  if (I.type === 'pen' && !(p > 0)) p = I.ps == null ? 0.2 : I.ps;
+  if (q.length && Math.hypot(x - q[q.length - 3], y - q[q.length - 2]) < 0.35 / I.pad.sc) return false;
+  I.ps = I.ps == null ? p : I.ps + (p - I.ps) * 0.45;
+  q.push(r1(x), r1(y), r2(I.ps)); return true;
+}
+function drawTip(e) {
+  var I = inp, s = I.s, q = s.p, n = q.length / 3;
+  clr(xT); if (!n) return; I.pad.setT(xT);
+  var P = new Path2D();
+  if (n === 1) disc(P, q[0], q[1], rad(s, q[2])); else seg(P, s, Math.max(0, n - 3), n - 2, n - 1, n - 1, n === 2);
+  var pr = [];
+  try { pr = e && e.getPredictedEvents ? Array.from(e.getPredictedEvents()) : []; } catch (_) {}
+  if (pr.length) {
+    var lx = q[n * 3 - 3], ly = q[n * 3 - 2], lr = rad(s, q[n * 3 - 1]);
+    pr.slice(0, 2).forEach(function (pe) { var xy = padXY(pe); chordQuad(P, lx, ly, lr, xy[0], xy[1], lr); disc(P, xy[0], xy[1], lr); lx = xy[0]; ly = xy[1]; });
+  }
+  xT.fillStyle = s.c; xT.fill(P);
+}
+function drawLiveHl() { clr(xL); inp.pad.setT(xL); var s = inp.s; drawStroke(xL, { t: 'h', c: s.c, w: s.w, path: hlPath(s.p) }); }
+function eraserCursor(x, y) {
+  var pad = inp.pad; clr(xT); pad.setT(xT); var r = S.er.r / pad.sc;
+  xT.beginPath(); xT.arc(x, y, r, 0, 6.2832); xT.fillStyle = 'rgba(255,255,255,.55)'; xT.fill();
+  xT.lineWidth = 1.2 / pad.sc; xT.strokeStyle = '#888'; xT.stroke();
+}
+function padMove(e) {
+  var I = inp, list = [];
+  try { list = e.getCoalescedEvents ? Array.from(e.getCoalescedEvents()) : []; } catch (_) {}
+  if (!list.length) list = [e];
+  if (I.mode === 'draw') {
+    var s = I.s, added = false;
+    list.forEach(function (ev) {
+      if (!addPt(ev)) return; added = true;
+      if (s.t === 'p') { var n = s.p.length / 3; if (n >= 3) { var i = n - 3; seg(I.P, s, Math.max(0, i - 1), i, i + 1, i + 2, i === 0); } }
+    });
+    if (s.t === 'h') { if (added) drawLiveHl(); }
+    else { if (added) { clr(xL); I.pad.setT(xL); xL.fillStyle = s.c; xL.fill(I.P); } drawTip(e); }
+  } else if (I.mode === 'er') {
+    var ch = false, x = I.lx, y = I.ly;
+    list.forEach(function (ev) { var xy = padXY(ev); x = xy[0]; y = xy[1]; if (eraseSeg(I.lx, I.ly, x, y)) ch = true; I.lx = x; I.ly = y; });
+    if (ch) I.pad.render();
+    eraserCursor(x, y);
+  }
+}
+function padUp() {
+  var I = inp; inp = null;
+  if (I.type === 'pen') { penDown = false; lastPenUp = now(); }
+  clr(xT); clr(xL); liveCv.style.mixBlendMode = 'normal';
+  var pad = I.pad, d = pad.d;
+  if (I.mode === 'draw') {
+    var s = I.s; if (!s.p.length) return;
+    pushUndo(d, d.strokes.slice(), pad.o.onChange);
+    d.strokes.push(s);
+    var grown = false;
+    if (pad.o.grow) { var bb = bbOf(s); if (bb[3] > d.h - 40) { d.h = Math.ceil(bb[3] + 140); grown = true; } }
+    if (grown) pad.layout(true); else { pad.setT(pad.ctx); drawStroke(pad.ctx, s); }
+    if (pad.o.onChange) pad.o.onChange();
+  } else if (I.mode === 'er') {
+    if (I.changed) { pushUndo(d, I.before, pad.o.onChange); if (pad.o.onChange) pad.o.onChange(); }
+  }
+}
+function pushUndo(d, before, onChange) { UNDO.push({ d: d, before: before, on: onChange }); if (UNDO.length > 100) UNDO.shift(); REDO = []; updUndo(); }
+function swapUndo(from, to) {
+  var e = from.pop(); if (!e) return;
+  to.push({ d: e.d, before: e.d.strokes, on: e.on }); e.d.strokes = e.before;
+  var p = PADS.get(e.d); if (p && p.host.isConnected) p.render();
+  if (e.on) e.on(); updUndo();
+}
+function updUndo() { $('#undo').disabled = !UNDO.length; $('#redo').disabled = !REDO.length; }
+$('#undo').onclick = function () { closePops(); swapUndo(UNDO, REDO); };
+$('#redo').onclick = function () { closePops(); swapUndo(REDO, UNDO); };
+
+/* Radierer */
+function dPS(px, py, ax, ay, bx, by) { var dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? ((px - ax) * dx + (py - ay) * dy) / l : 0; t = t < 0 ? 0 : t > 1 ? 1 : t; var x = ax + t * dx - px, y = ay + t * dy - py; return Math.sqrt(x * x + y * y); }
+function crs(ax, ay, bx, by, cx, cy) { return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax); }
+function dSS(ax, ay, bx, by, cx, cy, dx, dy) {
+  var d1 = crs(cx, cy, dx, dy, ax, ay), d2 = crs(cx, cy, dx, dy, bx, by), d3 = crs(ax, ay, bx, by, cx, cy), d4 = crs(ax, ay, bx, by, dx, dy);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return 0;
+  return Math.min(dPS(ax, ay, cx, cy, dx, dy), dPS(bx, by, cx, cy, dx, dy), dPS(cx, cy, ax, ay, bx, by), dPS(dx, dy, ax, ay, bx, by));
+}
+function hit(s, x0, y0, x1, y1, r) {
+  var b = bbOf(s);
+  if (Math.max(x0, x1) + r < b[0] || Math.min(x0, x1) - r > b[2] || Math.max(y0, y1) + r < b[1] || Math.min(y0, y1) - r > b[3]) return false;
+  var q = s.p, n = q.length / 3;
+  if (n === 1) return dPS(q[0], q[1], x0, y0, x1, y1) <= r + rad(s, q[2]);
+  for (var i = 0; i < n - 1; i++) { var a = i * 3; if (dSS(q[a], q[a + 1], q[a + 3], q[a + 4], x0, y0, x1, y1) <= r + Math.max(rad(s, q[a + 2]), rad(s, q[a + 5]))) return true; }
+  return false;
+}
+function dense(s) {
+  var q = s.p, n = q.length / 3; if (n < 2) return q.slice();
+  var o = [q[0], q[1], q[2]];
+  for (var i = 0; i < n - 1; i++) {
+    var a = Math.max(0, i - 1) * 3, b = i * 3, c = (i + 1) * 3, d = Math.min(n - 1, i + 2) * 3;
+    var m = Math.max(1, Math.ceil(Math.hypot(q[c] - q[b], q[c + 1] - q[b + 1])));
+    for (var k = 1; k <= m; k++) { var t = k / m; o.push(cr(q[a], q[b], q[c], q[d], t), cr(q[a + 1], q[b + 1], q[c + 1], q[d + 1], t), q[b + 2] + (q[c + 2] - q[b + 2]) * t); }
+  }
+  return o;
+}
+function rdp(q, eps) {
+  var n = q.length / 3; if (n < 3) return q.slice();
+  var keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1; var st = [[0, n - 1]];
+  while (st.length) {
+    var ab = st.pop(), a = ab[0], b = ab[1], md = -1, mi = -1;
+    for (var i = a + 1; i < b; i++) {
+      var dd = dPS(q[i * 3], q[i * 3 + 1], q[a * 3], q[a * 3 + 1], q[b * 3], q[b * 3 + 1]);
+      var lin = q[a * 3 + 2] + (q[b * 3 + 2] - q[a * 3 + 2]) * (i - a) / (b - a);
+      if (Math.abs(q[i * 3 + 2] - lin) > 0.06) dd = Math.max(dd, eps * 1.01);
+      if (dd > md) { md = dd; mi = i; }
+    }
+    if (md > eps) { keep[mi] = 1; st.push([a, mi], [mi, b]); }
+  }
+  var o = []; for (var j = 0; j < n; j++) if (keep[j]) o.push(q[j * 3], q[j * 3 + 1], q[j * 3 + 2]); return o;
+}
+function cut(s, x0, y0, x1, y1, r) {
+  var q = dense(s), runs = [], cur = [];
+  for (var i = 0; i < q.length; i += 3) {
+    if (dPS(q[i], q[i + 1], x0, y0, x1, y1) > r + rad(s, q[i + 2]) * 0.9) cur.push(q[i], q[i + 1], q[i + 2]);
+    else { if (cur.length) runs.push(cur); cur = []; }
+  }
+  if (cur.length) runs.push(cur);
+  return runs.filter(function (rn) { return rn.length >= 6; }).map(function (rn) {
+    return { t: s.t, c: s.c, w: s.w, k: s.k, p: rdp(rn, 0.25).map(function (v, i) { return i % 3 === 2 ? r2(v) : r1(v); }) };
+  });
+}
+function eraseSeg(x0, y0, x1, y1) {
+  var d = inp.pad.d, r = S.er.r / inp.pad.sc, ch = false;
+  if (S.er.mode === 'stroke') {
+    var keep = d.strokes.filter(function (s) { return !hit(s, x0, y0, x1, y1, r); });
+    if (keep.length !== d.strokes.length) { d.strokes = keep; ch = true; }
+  } else {
+    var out = [];
+    d.strokes.forEach(function (s) { if (!hit(s, x0, y0, x1, y1, r)) { out.push(s); return; } ch = true; cut(s, x0, y0, x1, y1, r).forEach(function (n) { out.push(n); }); });
+    if (ch) d.strokes = out;
+  }
+  if (ch) inp.changed = true;
+  return ch;
+}
+/* Handballen: Seite nicht scrollen, solange der Stift schreibt oder gerade geschrieben hat */
+document.addEventListener('touchstart', function (e) {
+  for (var i = 0; i < e.changedTouches.length; i++) {
+    if (e.changedTouches[i].touchType === 'stylus' && e.target.closest && e.target.closest('.pad.editable')) { e.preventDefault(); return; }
+  }
+}, { passive: false });
+document.addEventListener('touchmove', function (e) {
+  var t = e.target, inMain = t.closest && t.closest('#main');
+  if (!inMain) return;
+  var stylus = false; for (var i = 0; i < e.touches.length; i++) if (e.touches[i].touchType === 'stylus') stylus = true;
+  if ((stylus && t.closest('.pad.editable')) || penDown || now() - lastPenUp < 900) e.preventDefault();
+}, { passive: false });
+document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+
+/* ================= Werkzeugleiste Stift ================= */
+var ic = {
+  pen: function (c, wd) { var hh = Math.min(6, 1.2 + wd * 0.9); return '<svg viewBox="0 0 30 30"><path d="M7 22l2-6 11-11 4 4-11 11z" fill="#fff" stroke="#444" stroke-width="1.5" stroke-linejoin="round"/><path d="M7 22l2-6 4 4z" fill="' + c + '"/><rect x="4" y="' + (28 - hh) + '" width="22" height="' + hh + '" rx="' + hh / 2 + '" fill="' + c + '"/></svg>'; },
+  hl: function (c) { return '<svg viewBox="0 0 30 30"><path d="M8 19l3-8 9-8 5 5-8 9-8 3z" fill="#fff" stroke="#444" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 19l3-8 5 5z" fill="' + c + '" stroke="#444" stroke-width="1"/><rect x="4" y="23" width="22" height="6" rx="1.5" fill="' + c + '"/></svg>'; },
+  er: '<svg viewBox="0 0 30 30"><path d="M5 18l10-10 9 9-7 7h-6z" fill="#fff" stroke="#444" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 18l5-5 9 9-2 2h-6z" fill="#f4b3c0" stroke="#444" stroke-width="1.5" stroke-linejoin="round"/><path d="M14 26h11" stroke="#444" stroke-width="1.5" stroke-linecap="round"/></svg>'
+};
+function refreshPens() {
+  document.querySelectorAll('[data-tool]').forEach(function (b) {
+    var t = b.dataset.tool;
+    b.innerHTML = t[0] === 'p' ? ic.pen(S.slots[+t[1]].c, S.slots[+t[1]].w) : t === 'hl' ? ic.hl(S.hl.c) : ic.er;
+    b.classList.toggle('on', t === tool);
+  });
+}
+function updToolbar() { $('#pens').classList.toggle('show', !!document.querySelector('#main .pad.editable')); }
+var curPop = null;
+function closePops() { if (curPop) { curPop.remove(); curPop = null; return true; } return false; }
+function openPop(btn, key, build) {
+  closePops();
+  var p = h('div', { class: 'pop' }); p.dataset.for = key; document.body.appendChild(p);
+  var render = function () { p.innerHTML = ''; build(p, render); }; render();
+  var r = btn.getBoundingClientRect(), pw = p.offsetWidth;
+  p.style.left = Math.max(8, Math.min(innerWidth - pw - 8, r.left + r.width / 2 - pw / 2)) + 'px';
+  p.style.top = (r.bottom + 6) + 'px'; p.style.maxHeight = (innerHeight - r.bottom - 20) + 'px'; p.style.overflowY = 'auto';
+  curPop = p;
+}
+document.addEventListener('pointerdown', function (e) {
+  if (curPop && !curPop.contains(e.target) && !e.target.closest('#pens') && !e.target.closest('#menuBtn')) closePops();
+}, true);
+function segCtl(opts, val, on) {
+  return h('div', { class: 'seg' }, opts.map(function (o) { return h('button', { class: o[0] === val ? 'on' : '', onclick: function () { on(o[0]); } }, o[1]); }));
+}
+function penPop(cfg, cols, widths, isH) {
+  return function (p, re) {
+    p.appendChild(h('h4', null, 'Farbe'));
+    p.appendChild(h('div', { class: 'grid' }, cols.map(function (c) { return h('button', { class: 'sw' + (c === cfg.c ? ' on' : ''), style: 'background:' + c, onclick: function () { cfg.c = c; saveS(); refreshPens(); re(); } }); })));
+    p.appendChild(h('h4', null, 'Stärke'));
+    p.appendChild(h('div', { class: 'row' }, widths.map(function (wv) {
+      var ds = isH ? Math.min(30, wv) : Math.min(22, wv * 2.6 + 2);
+      return h('button', { class: 'wd' + (wv === cfg.w ? ' on' : ''), onclick: function () { cfg.w = wv; saveS(); refreshPens(); re(); } },
+        h('span', { style: 'display:block;width:' + (isH ? 10 : ds) + 'px;height:' + ds + 'px;border-radius:' + (isH ? 3 : ds / 2) + 'px;background:' + cfg.c }));
+    })));
+  };
+}
+function erPop(p, re) {
+  p.appendChild(h('h4', null, 'Radiert'));
+  p.appendChild(segCtl([['stroke', 'Ganzen Strich'], ['area', 'Nur Bereich']], S.er.mode, function (v) { S.er.mode = v; saveS(); re(); }));
+  p.appendChild(h('h4', null, 'Größe'));
+  p.appendChild(segCtl(ER_R.map(function (x) { return [x[1], x[0]]; }), S.er.r, function (v) { S.er.r = v; saveS(); re(); }));
+}
+document.querySelectorAll('[data-tool]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var t = b.dataset.tool;
+    if (t === tool) {
+      if (curPop && curPop.dataset.for === t) { closePops(); return; }
+      if (t[0] === 'p') openPop(b, t, penPop(S.slots[+t[1]], INK_C, INK_W, false));
+      else if (t === 'hl') openPop(b, t, penPop(S.hl, HL_C, HL_W, true));
+      else openPop(b, t, erPop);
+    } else { closePops(); tool = t; refreshPens(); }
+  });
+});
+
+/* ================= Bausteine ================= */
+function chipInput(arr, kind, onChange, opts) {
+  opts = opts || {};
+  var box = h('div'), inEl;
+  function addV(v) {
+    v = String(v).trim().replace(/,$/, ''); if (!v) return;
+    if (arr.some(function (x) { return x.toLowerCase() === v.toLowerCase(); })) return;
+    arr.push(v); learn(kind, v); onChange(); draw(true);
+  }
+  function draw(focus) {
+    box.innerHTML = '';
+    inEl = h('input', { type: 'text', placeholder: opts.ph || 'Eingeben …', enterKeyHint: 'done', autocapitalize: 'sentences' });
+    inEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addV(inEl.value); } });
+    inEl.addEventListener('input', function () { if (/,/.test(inEl.value)) { addV(inEl.value.replace(/,/g, '')); } else drawSugs(); });
+    inEl.addEventListener('blur', function () { if (inEl.value.trim()) addV(inEl.value); });
+    box.appendChild(h('div', { class: 'chipbox chipin' }, arr.map(function (v, i) {
+      return h('button', { class: 'chip' + (kind === 'tags' ? ' tag' : ''), onclick: function () { arr.splice(i, 1); onChange(); draw(); } }, v, h('span', { class: 'x' }, '×'));
+    }), inEl));
+    box.appendChild(sugEl = h('div', { class: 'sugs' })); drawSugs();
+    if (focus) inEl.focus();
+  }
+  var sugEl;
+  function drawSugs() {
+    sugEl.innerHTML = '';
+    suggest(kind, arr, inEl.value, opts.n || 10).forEach(function (w) {
+      sugEl.appendChild(h('button', { class: 'chip sug', onpointerdown: function (e) { e.preventDefault(); }, onclick: function () { inEl.value = ''; addV(w); } }, w));
+    });
+  }
+  draw();
+  return box;
+}
+function textSuggest(val, kind, onSet, ph, size) {
+  var wrap = h('div'), inEl = h('input', { type: 'text', value: val || '', placeholder: ph || '', size: size || 14 });
+  var sg = h('div', { class: 'sugs' });
+  function ds() {
+    sg.innerHTML = '';
+    suggest(kind, [inEl.value], inEl.value, 6).forEach(function (w) {
+      sg.appendChild(h('button', { class: 'chip sug', onpointerdown: function (e) { e.preventDefault(); }, onclick: function () { inEl.value = w; onSet(w); ds(); } }, w));
+    });
+  }
+  inEl.addEventListener('input', function () { onSet(inEl.value); ds(); });
+  inEl.addEventListener('change', function () { if (inEl.value.trim()) learn(kind, inEl.value.trim()); });
+  wrap.appendChild(inEl); wrap.appendChild(sg); ds();
+  return wrap;
+}
+function posEditor(o, onChange, opts) {
+  opts = opts || {};
+  var box = h('div');
+  function draw() {
+    box.innerHTML = '';
+    if (!opts.posOnly) box.appendChild(h('div', { style: 'margin-bottom:6px' }, segCtl([['pos', 'Positionen'], ['total', 'Nur Anzahl']], o.pmode, function (v) {
+      o.pmode = v; if (v === 'total' && !o.total) o.total = posSum(o.pos); onChange(); draw();
+    })));
+    if (opts.posOnly || o.pmode === 'pos') {
+      box.appendChild(h('div', { class: 'pos' }, POS.map(function (k) {
+        return h('div', { class: 'pc', title: POS_NAME[k] },
+          h('b', null, k),
+          h('button', { onclick: function () { if (o.pos[k] > 0) { o.pos[k]--; onChange(); draw(); } } }, '−'),
+          h('span', null, o.pos[k] || 0),
+          h('button', { onclick: function () { o.pos[k] = (o.pos[k] || 0) + 1; onChange(); draw(); } }, '+'));
+      }), h('span', { class: 'sum' }, '= ' + posSum(o.pos) + ' Spieler')));
+    } else {
+      box.appendChild(h('div', { class: 'pos' }, h('div', { class: 'pc' },
+        h('button', { onclick: function () { if (o.total > 0) { o.total--; onChange(); draw(); } } }, '−'),
+        h('span', { style: 'min-width:34px' }, o.total || 0),
+        h('button', { onclick: function () { o.total = (o.total || 0) + 1; onChange(); draw(); } }, '+')), h('span', { class: 'sum' }, 'Spieler')));
+    }
+  }
+  draw(); return box;
+}
+
+/* ---------- Bilder ---------- */
+function pickFile(accept, multiple) {
+  return new Promise(function (res) {
+    var fi = $('#fileIn'); var nf = fi.cloneNode(); fi.parentNode.replaceChild(nf, fi);
+    if (accept) nf.setAttribute('accept', accept); else nf.removeAttribute('accept');
+    nf.multiple = !!multiple;
+    nf.addEventListener('change', function () { res(Array.from(nf.files || [])); });
+    nf.click();
+  });
+}
+function blobToImg(blob, maxSide) {
+  return new Promise(function (res, rej) {
+    var url = URL.createObjectURL(blob), im = new Image();
+    im.onload = function () {
+      var w = im.naturalWidth, hh = im.naturalHeight, f = Math.min(1, (maxSide || 1600) / Math.max(w, hh));
+      var c = document.createElement('canvas'); c.width = Math.round(w * f); c.height = Math.round(hh * f);
+      var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(im, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      res({ src: c.toDataURL('image/jpeg', 0.85), w: c.width, h: c.height });
+    };
+    im.onerror = function () { URL.revokeObjectURL(url); rej(new Error('Bild nicht lesbar')); };
+    im.src = url;
+  });
+}
+var pasteTarget = null;
+async function clipboardImage() {
+  if (navigator.clipboard && navigator.clipboard.read) {
+    var items = await navigator.clipboard.read();
+    for (var i = 0; i < items.length; i++) {
+      var t = items[i].types.find(function (x) { return x.indexOf('image/') === 0; });
+      if (t) return await items[i].getType(t);
+    }
+    throw new Error('Kein Bild in der Zwischenablage');
+  }
+  throw new Error('nicht unterstützt');
+}
+document.addEventListener('paste', function (e) {
+  if (!pasteTarget || Date.now() - pasteTarget.t > 60000) return;
+  var items = (e.clipboardData && e.clipboardData.items) || [];
+  for (var i = 0; i < items.length; i++) if (items[i].type.indexOf('image/') === 0) {
+    var f = items[i].getAsFile(); if (f) { e.preventDefault(); var cb = pasteTarget.cb; pasteTarget = null; blobToImg(f).then(cb); return; }
+  }
+});
+function openImage(src) { var im = imgFor(src); var go = function () { openZoom({ w: 600, h: Math.round(600 * im.naturalHeight / im.naturalWidth) || 400, strokes: [] }, 'none', src); }; if (im.complete) go(); else im._cbs.push(go); }
+
+/* ---------- Übungskarte ---------- */
+function imgCol(col, ex, ch, editable, onTapView) {
+  col.innerHTML = '';
+  col.appendChild(h('div', { class: 'lbl' }, 'Bild'));
+  if (!ex.img) {
+    if (!editable) { col.appendChild(h('div', { class: 'muted' }, '–')); return; }
+    var set = function (img) { ex.img = img; ch(); imgCol(col, ex, ch, editable); layoutAll(); updToolbar(); };
+    var fromImg = function (r) { set({ bg: 'none', src: r.src, ink: { w: 600, h: Math.round(600 * r.h / r.w), strokes: [] } }); };
+    col.appendChild(h('div', { class: 'row' },
+      h('button', { class: 'btn sm', onclick: function () { set({ bg: 'court', src: null, ink: { w: 600, h: 330, strokes: [] } }); } }, '▭ Spielfeld'),
+      h('button', { class: 'btn sm', onclick: function () { set({ bg: 'half', src: null, ink: { w: 600, h: 420, strokes: [] } }); } }, '◫ Halbfeld'),
+      h('button', { class: 'btn sm', onclick: function () { set({ bg: 'none', src: null, ink: { w: 600, h: 360, strokes: [] } }); } }, '✎ Leer'),
+      h('button', { class: 'btn sm', onclick: async function () {
+        pasteTarget = { t: Date.now(), cb: fromImg };
+        try { var b = await clipboardImage(); pasteTarget = null; fromImg(await blobToImg(b)); }
+        catch (e) { toast(navigator.clipboard && navigator.clipboard.read ? 'Kein Bild in der Zwischenablage. Im Coaching Board erst „Kopieren“.' : 'Jetzt ⌘V / Strg+V drücken, oder „Foto/Datei“ nutzen.', 4000); }
+      } }, '📋 Einfügen'),
+      h('button', { class: 'btn sm', onclick: async function () {
+        var f = await pickFile('image/*'); if (!f.length) return;
+        try { fromImg(await blobToImg(f[0])); } catch (e) { toast('Bild konnte nicht gelesen werden'); }
+      } }, '🖼 Foto/Datei')));
+    col.appendChild(h('div', { class: 'note' }, 'Aufstellung aus dem Coaching Board: dort „Kopieren“, hier „Einfügen“ – oder dort „Export“ und hier „Foto/Datei“.'));
+    return;
+  }
+  var ph = h('div'); col.appendChild(ph);
+  new Pad(ph, ex.img.ink, { bg: ex.img.bg, img: ex.img.src, editable: editable, onChange: ch, onTap: editable ? null : onTapView });
+  if (editable) col.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
+    ex.img.ink.strokes.length ? h('button', { class: 'btn sm', onclick: async function () {
+      if (await ask('Alle Striche auf dem Bild löschen?', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { pushUndo(ex.img.ink, ex.img.ink.strokes.slice(), ch); ex.img.ink.strokes = []; ch(); imgCol(col, ex, ch, editable); layoutAll(); }
+    } }, 'Striche löschen') : null,
+    h('button', { class: 'btn sm warn', onclick: async function () {
+      if (await ask('Bild entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { ex.img = null; ch(); imgCol(col, ex, ch, editable); updToolbar(); }
+    } }, 'Bild entfernen')));
+}
+function descCol(col, ex, ch, editable, onTapView) {
+  col.innerHTML = '';
+  var d = ex.desc;
+  var head = h('div', { class: 'row', style: 'justify-content:space-between' }, h('div', { class: 'lbl' }, 'Beschreibung', editable ? h('span', { class: 'req' }, ' *') : null));
+  if (editable) head.appendChild(h('div', { class: 'seg' },
+    h('button', { class: d.showInk ? 'on' : '', onclick: function () { if (d.showInk && !d.showText) return; d.showInk = !d.showInk; ch(); descCol(col, ex, ch, editable); layoutAll(); updToolbar(); } }, '✎ Handschrift'),
+    h('button', { class: d.showText ? 'on' : '', onclick: function () { if (d.showText && !d.showInk) return; d.showText = !d.showText; ch(); descCol(col, ex, ch, editable); layoutAll(); updToolbar(); } }, '⌨ Text')));
+  col.appendChild(head);
+  if (editable) {
+    if (d.showText) {
+      var ta = h('textarea', { value: d.text, placeholder: 'Beschreibung eintippen …' });
+      ta.addEventListener('input', function () { d.text = ta.value; autoGrow(ta); ch(); });
+      col.appendChild(ta); setTimeout(function () { autoGrow(ta); }, 0);
+    }
+    if (d.showInk) {
+      var ph = h('div', { style: 'margin-top:6px' }); col.appendChild(ph);
+      var pad = new Pad(ph, d.ink, { bg: 'lines', editable: true, grow: true, onChange: ch });
+      col.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
+        h('button', { class: 'btn sm', onclick: function () { d.ink.h += 160; pad.layout(true); ch(); } }, '+ Platz'),
+        d.ink.h > 240 ? h('button', { class: 'btn sm', onclick: function () {
+          var maxY = 0; d.ink.strokes.forEach(function (s) { maxY = Math.max(maxY, bbOf(s)[3]); });
+          d.ink.h = Math.max(240, Math.ceil(maxY + 30), d.ink.h - 160); pad.layout(true); ch();
+        } }, '− Platz') : null));
+    }
+  } else {
+    var any = false;
+    if ((d.text || '').trim()) { any = true; col.appendChild(h('div', { class: 'runtxt', onclick: onTapView }, d.text)); }
+    if (d.ink.strokes.length) { any = true; var ph2 = h('div'); col.appendChild(ph2); new Pad(ph2, d.ink, { bg: 'lines', onTap: onTapView }); }
+    if (!any) col.appendChild(h('div', { class: 'muted' }, '–'));
+  }
+}
+function exCard(ex, o) {
+  // o: {mode:'plan'|'db', onChange, item, onRemove, onUp, onDown, posOnly}
+  var card = h('div', { class: 'card ex' }), status = h('div');
+  var ch = function () { if (o.onChange) o.onChange(); refreshStatus(); };
+  var stT = 0;
+  function refreshStatus() { clearTimeout(stT); stT = setTimeout(function () { if (o.status) o.status(status); }, 400); }
+  var tIn = h('input', { type: 'text', class: 'title', value: ex.title, placeholder: 'Titel der Übung' });
+  tIn.addEventListener('input', function () { ex.title = tIn.value; ch(); });
+  var head = h('div', { class: 'head' }, tIn);
+  if (o.mode === 'plan') {
+    head.appendChild(h('span', { class: 'muted' }, 'Feld'));
+    head.appendChild(textSuggest(o.item.field, 'fields', function (v) { o.item.field = v; if (o.onChange) o.onChange(); }, 'z. B. 1', 6));
+    head.appendChild(h('button', { class: 'btn sm', title: 'nach oben', onclick: o.onUp }, '↑'));
+    head.appendChild(h('button', { class: 'btn sm', title: 'nach unten', onclick: o.onDown }, '↓'));
+    head.appendChild(h('button', { class: 'btn sm warn', title: 'aus dem Training entfernen', onclick: o.onRemove }, '✕'));
+  }
+  card.appendChild(head);
+  var meta = h('div', { class: 'cols' },
+    h('div', null, h('div', { class: 'lbl' }, 'Ziel', o.mode === 'db' ? h('span', { class: 'req' }, ' *') : null), chipInput(ex.goals, 'goals', ch, { ph: 'Ziel …', n: 8 })),
+    h('div', null, h('div', { class: 'lbl' }, 'Stichworte'), chipInput(ex.tags, 'tags', ch, { ph: 'Stichwort …', n: 8 })));
+  card.appendChild(meta);
+  card.appendChild(h('div', { class: 'lbl' }, 'Spieler', o.mode === 'db' ? h('span', { class: 'req' }, ' *') : null));
+  if (o.posOnly) ex.pmode = 'pos';
+  card.appendChild(posEditor(ex, ch, { posOnly: o.posOnly }));
+  var ci = h('div'), cd = h('div');
+  card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, ci, cd));
+  imgCol(ci, ex, ch, true); descCol(cd, ex, ch, true);
+  card.appendChild(status);
+  if (o.status) o.status(status);
+  return card;
+}
+
+/* ================= Ansichten ================= */
+var st = { view: 'plan', trId: null, runId: null, edit: null, editOrig: null, picker: null, q: '', fGoals: [], fMax: '' };
+function go(view, patch) {
+  if (st.view === 'ex' && st.edit && view !== 'ex' && dirtyEdit()) {
+    ask('Die Änderungen an der Übung sind noch nicht gespeichert. Verwerfen?', [['Zurück', 0], ['Verwerfen', 1, 'warn']]).then(function (r) { if (r) { st.edit = null; go(view, patch); } });
+    return;
+  }
+  st.view = view; if (patch) Object.keys(patch).forEach(function (k) { st[k] = patch[k]; });
+  UNDO = []; REDO = []; render(true);
+}
+document.querySelectorAll('.tabs button').forEach(function (b) { b.onclick = function () { go(b.dataset.view, { picker: null }); }; });
+function render(top) {
+  closePops(); flush();
+  var m = $('#main'), sy = top ? 0 : m.scrollTop;
+  padsReset(); m.innerHTML = '';
+  var w = h('div', { class: 'wrap' }); m.appendChild(w);
+  document.querySelectorAll('.tabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.view === st.view); });
+  if (st.view === 'plan') { if (st.picker) renderPicker(w); else renderPlan(w); }
+  else if (st.view === 'run') renderRun(w);
+  else renderExView(w);
+  layoutAll(); m.scrollTop = sy; updToolbar(); updUndo();
+}
+function trSorted() { return Array.from(DB.tr.values()).sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''); }); }
+function trTitle(tr) { return fmtDate(tr.date) + (tr.time ? ', ' + tr.time : '') + (tr.place ? ' · ' + tr.place : ''); }
+function trCount(tr) { var n = 0; tr.blocks.forEach(function (b) { n += b.items.length; }); return n; }
+
+/* ----- Planen ----- */
+function renderPlan(w) {
+  var tr = st.trId && DB.tr.get(st.trId);
+  if (!tr) {
+    w.appendChild(h('div', { class: 'row', style: 'margin-top:14px' }, h('h2', { style: 'margin:0;flex:1' }, 'Trainings'),
+      h('button', { class: 'btn pri', onclick: function () { var t = newTr(); DB.tr.set(t.id, t); markTr(t); go('plan', { trId: t.id }); } }, '+ Neues Training')));
+    var list = trSorted();
+    if (!list.length) w.appendChild(h('div', { class: 'empty' }, 'Noch kein Training. Lege mit „+ Neues Training“ das erste an.'));
+    list.forEach(function (t) {
+      w.appendChild(h('div', { class: 'trow', onclick: function () { go('plan', { trId: t.id }); } },
+        h('div', { class: 't' }, h('b', null, trTitle(t)), h('span', { class: 'muted' }, t.blocks.length + ' Blöcke · ' + trCount(t) + ' Übungen' + (t.participants.names.length ? ' · ' + t.participants.names.length + ' Teilnehmer' : ''))),
+        h('button', { class: 'btn sm', onclick: function (e) { e.stopPropagation(); var c = clone(t); c.id = uid(); c.date = todayISO(); c.participants = { names: [], shots: [], pos: zeroPos() }; c.blocks.forEach(function (b) { b.id = uid(); b.items.forEach(function (it) { it.iid = uid(); it.note = null; }); }); DB.tr.set(c.id, c); markTr(c); go('plan', { trId: c.id }); toast('Training kopiert'); } }, 'Kopieren'),
+        h('button', { class: 'btn sm warn', onclick: async function (e) { e.stopPropagation(); if (await ask('Training „' + trTitle(t) + '“ löschen? Die Übungen bleiben in der Datenbank.', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { delTr(t.id); render(); } } }, 'Löschen')));
+    });
+    return;
+  }
+  var chTr = function () { markTr(tr); };
+  w.appendChild(h('div', { class: 'row', style: 'margin-top:12px' },
+    h('button', { class: 'btn', onclick: function () { go('plan', { trId: null }); } }, '← Alle Trainings'),
+    h('div', { class: 'sp' }),
+    h('button', { class: 'btn pri', onclick: function () { go('run', { runId: tr.id }); } }, 'Durchführen ▶')));
+  // Kopf
+  var card = h('div', { class: 'card' });
+  var dIn = h('input', { type: 'date', value: tr.date }), tIn = h('input', { type: 'time', value: tr.time });
+  dIn.addEventListener('change', function () { tr.date = dIn.value; chTr(); });
+  tIn.addEventListener('change', function () { tr.time = tIn.value; DB.kv.last.time = tr.time; markKv('last'); chTr(); render(); });
+  card.appendChild(h('div', { class: 'row' },
+    h('div', null, h('div', { class: 'lbl' }, 'Datum'), dIn),
+    h('div', null, h('div', { class: 'lbl' }, 'Beginn'), tIn),
+    h('div', { style: 'flex:1;min-width:200px' }, h('div', { class: 'lbl' }, 'Ort'), textSuggest(tr.place, 'places', function (v) { tr.place = v; DB.kv.last.place = v; markKv('last'); chTr(); }, 'Halle …', 20))));
+  var P = tr.participants;
+  card.appendChild(h('div', { class: 'lbl' }, 'Teilnehmer (' + P.names.length + ')'));
+  var namesBox = chipInput(P.names, 'names', function () { chTr(); }, { ph: 'Name …', n: 14 });
+  card.appendChild(namesBox);
+  var shots = h('div', { class: 'thumbs', style: 'margin-top:8px' });
+  function drawShots() {
+    shots.innerHTML = '';
+    P.shots.forEach(function (src, i) {
+      shots.appendChild(h('div', { class: 'thumb', onclick: function () { openImage(src); } }, h('img', { src: src }),
+        h('button', { class: 'del', onclick: async function (e) { e.stopPropagation(); if (await ask('Screenshot entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { P.shots.splice(i, 1); chTr(); drawShots(); } } }, '×')));
+    });
+    shots.appendChild(h('button', { class: 'btn ghost', style: 'height:110px', onclick: async function () {
+      var fs = await pickFile('image/*', true);
+      for (var i = 0; i < fs.length; i++) { try { P.shots.push((await blobToImg(fs[i], 1400)).src); } catch (e) {} }
+      chTr(); drawShots();
+    } }, '+ Screenshot'));
+  }
+  drawShots(); card.appendChild(shots);
+  card.appendChild(h('div', { class: 'lbl' }, 'Positionen (optional)'));
+  card.appendChild(posEditor(P, chTr, { posOnly: true }));
+  w.appendChild(card);
+  // Blöcke
+  var times = blockTimes(tr);
+  tr.blocks.forEach(function (b, bi) {
+    var bl = h('div', { class: 'block' });
+    var durIn = h('input', { type: 'number', min: 0, step: 5, value: b.dur || '', placeholder: '–', style: 'width:80px', inputMode: 'numeric' });
+    durIn.addEventListener('change', function () { b.dur = durIn.value ? +durIn.value : null; chTr(); render(); });
+    bl.appendChild(h('div', { class: 'bhead' },
+      h('h3', null, 'Block ' + (bi + 1)),
+      times[bi] ? h('span', { class: 'time' }, timeLabel(times[bi])) : null,
+      h('span', { class: 'muted' }, 'Dauer'), durIn, h('span', { class: 'muted' }, 'Min.'),
+      h('div', { class: 'sp' }),
+      h('button', { class: 'btn sm', disabled: bi === 0, onclick: function () { tr.blocks.splice(bi, 1); tr.blocks.splice(bi - 1, 0, b); chTr(); render(); } }, '↑'),
+      h('button', { class: 'btn sm', disabled: bi === tr.blocks.length - 1, onclick: function () { tr.blocks.splice(bi, 1); tr.blocks.splice(bi + 1, 0, b); chTr(); render(); } }, '↓'),
+      h('button', { class: 'btn sm warn', onclick: async function () {
+        if (b.items.length && !(await ask('Block ' + (bi + 1) + ' mit ' + b.items.length + ' Übung(en) entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']]))) return;
+        tr.blocks.splice(bi, 1); chTr(); render();
+      } }, 'Block entfernen')));
+    if (b.items.length > 1) bl.appendChild(h('div', { class: 'muted', style: 'margin-top:4px' }, b.items.length + ' Übungen laufen parallel'));
+    b.items.forEach(function (it, ii) { bl.appendChild(planItem(tr, b, it, ii)); });
+    bl.appendChild(h('div', { class: 'row', style: 'margin-top:8px' },
+      h('button', { class: 'btn', onclick: function () { var ex = newEx(tr); b.items.push({ iid: uid(), own: true, ex: ex, field: '', note: null }); chTr(); render(); } }, '+ Neue Übung'),
+      h('button', { class: 'btn', onclick: function () { st.picker = { tr: tr.id, block: b.id }; st.q = ''; st.fGoals = []; render(true); } }, '+ Aus Datenbank')));
+    w.appendChild(bl);
+  });
+  w.appendChild(h('button', { class: 'btn', style: 'margin:6px 0 20px', onclick: function () { tr.blocks.push(newBlock()); chTr(); render(); } }, '+ Übungsblock'));
+}
+var ownTimers = {};
+function planItem(tr, b, it, ii) {
+  var ex = it.ex;
+  var onChange = function () {
+    markTr(tr);
+    if (it.own && ex.goals.length) { clearTimeout(ownTimers[ex.id]); ownTimers[ex.id] = setTimeout(function () { var c = clone(ex); DB.ex.set(c.id, c); markEx(c); }, 600); }
+  };
+  return exCard(ex, {
+    mode: 'plan', item: it, onChange: onChange,
+    onUp: function () { if (ii > 0) { b.items.splice(ii, 1); b.items.splice(ii - 1, 0, it); markTr(tr); render(); } },
+    onDown: function () { if (ii < b.items.length - 1) { b.items.splice(ii, 1); b.items.splice(ii + 1, 0, it); markTr(tr); render(); } },
+    onRemove: async function () { if (await ask('Übung aus diesem Training entfernen? (In der Datenbank bleibt sie.)', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { b.items.splice(ii, 1); markTr(tr); render(); } },
+    status: function (el) {
+      el.className = 'status'; el.innerHTML = '';
+      var miss = !hasDesc(ex) ? ' Beschreibung fehlt (Pflichtfeld).' : '';
+      if (it.own) {
+        if (!ex.goals.length) { el.classList.add('warn'); el.textContent = 'Neue Übung – sie kommt in die Datenbank, sobald sie ein Ziel hat.' + miss; }
+        else { el.classList.add(miss ? 'warn' : 'ok'); el.textContent = 'Neue Übung, wird in der Datenbank gespeichert.' + miss; }
+        return;
+      }
+      var src = DB.ex.get(ex.id);
+      var act = function (lbl, f) { return h('button', { class: 'btn sm', onclick: f }, lbl); };
+      if (!src) { el.classList.add('warn'); el.appendChild(document.createTextNode('Aus der Datenbank – dort inzwischen gelöscht.' + miss + ' ')); el.appendChild(act('Wieder in Datenbank speichern', function () { saveVariant(tr, it, el, true); })); return; }
+      if (sig(src) === sig(ex)) { el.classList.add('ok'); el.textContent = 'Aus der Datenbank, unverändert.' + miss; return; }
+      el.classList.add('chg');
+      el.appendChild(document.createTextNode('Geändert gegenüber der Datenbank.' + miss));
+      el.appendChild(act('In Datenbank aktualisieren', function () {
+        if (!ex.goals.length) { toast('Für die Datenbank braucht die Übung mindestens ein Ziel.'); return; }
+        var c = clone(ex); c.created = src.created; c.variantOf = src.variantOf; DB.ex.set(c.id, c); markEx(c); toast('Übung in der Datenbank aktualisiert'); planItemStatusRefresh(el, tr, b, it, ii);
+      }));
+      el.appendChild(act('Als neue Variante speichern', function () { saveVariant(tr, it, el); }));
+    }
+  });
+  function planItemStatusRefresh() { render(); }
+  function saveVariant(tr2, it2, el, same) {
+    if (!ex.goals.length) { toast('Für die Datenbank braucht die Übung mindestens ein Ziel.'); return; }
+    var c = clone(ex);
+    var src0 = DB.ex.get(ex.id);
+    if (!same) { c.variantOf = ex.id; c.id = uid(); if (!ex.title || (src0 && src0.title === ex.title)) c.title = (ex.title || exLabel(ex)) + ' – Variante'; c.created = Date.now(); ex.id = c.id; ex.title = c.title; ex.variantOf = c.variantOf; }
+    DB.ex.set(c.id, c); markEx(c); markTr(tr); toast(same ? 'In der Datenbank gespeichert' : 'Als neue Variante gespeichert'); render();
+  }
+}
+
+/* ----- Auswahl aus der Datenbank ----- */
+function exFilterBar(w, onChange, tr) {
+  var q = h('input', { type: 'search', value: st.q, placeholder: 'Suchen (Titel, Ziel, Stichwort, Text) …', style: 'flex:1;min-width:200px' });
+  q.addEventListener('input', function () { st.q = q.value; onChange(); });
+  var max = h('input', { type: 'number', min: 0, value: st.fMax, placeholder: '–', style: 'width:80px', inputMode: 'numeric' });
+  max.addEventListener('input', function () { st.fMax = max.value; onChange(); });
+  w.appendChild(h('div', { class: 'row', style: 'margin-top:10px' }, q, h('span', { class: 'muted' }, 'max. Spieler'), max));
+  var goals = {}; DB.ex.forEach(function (e) { e.goals.forEach(function (g) { goals[g] = (goals[g] || 0) + 1; }); });
+  var gl = Object.keys(goals).sort(function (a, b) { return goals[b] - goals[a]; });
+  if (gl.length) w.appendChild(h('div', { style: 'margin-top:6px' }, gl.map(function (g) {
+    var on = st.fGoals.indexOf(g) >= 0;
+    return h('button', { class: 'chip' + (on ? ' on' : ' sug'), style: on ? '' : '', onclick: function () { if (on) st.fGoals.splice(st.fGoals.indexOf(g), 1); else st.fGoals.push(g); onChange(true); } }, g + ' (' + goals[g] + ')');
+  })));
+}
+function exFiltered() {
+  var q = st.q.trim().toLowerCase(), mx = st.fMax ? +st.fMax : 0;
+  return Array.from(DB.ex.values()).filter(function (e) {
+    if (st.fGoals.length && !st.fGoals.every(function (g) { return e.goals.indexOf(g) >= 0; })) return false;
+    if (mx && players(e) > mx) return false;
+    if (q) { var hay = [e.title, e.goals.join(' '), e.tags.join(' '), e.desc.text].join(' ').toLowerCase(); if (hay.indexOf(q) < 0) return false; }
+    return true;
+  }).sort(function (a, b) { return b.updated - a.updated; });
+}
+function exRow(e, onClick) {
+  var th = h('div', { class: 'th' });
+  var row = h('div', { class: 'exrow', onclick: onClick }, th,
+    h('div', { class: 'info' },
+      h('b', null, exLabel(e), e.variantOf ? h('span', { class: 'muted' }, ' (Variante)') : null),
+      h('div', { class: 'muted', style: 'margin:3px 0' }, players(e) + ' Spieler' + (e.pmode === 'pos' && posSum(e.pos) ? ' (' + posText(e.pos) + ')' : '')),
+      h('div', null, e.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), e.tags.map(function (g) { return h('span', { class: 'chip tag' }, g); })),
+      (e.desc.text || '').trim() ? h('div', { class: 'muted', style: 'margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, e.desc.text.trim().split('\n')[0]) : null));
+  if (e.img) new Pad(th, e.img.ink, { bg: e.img.bg, img: e.img.src });
+  else if (e.desc.ink.strokes.length) new Pad(th, { w: 600, h: Math.min(e.desc.ink.h, 360), strokes: e.desc.ink.strokes }, { bg: 'lines' });
+  else th.style.width = '0';
+  return row;
+}
+function renderPicker(w) {
+  var tr = DB.tr.get(st.picker.tr);
+  w.appendChild(h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: function () { st.picker = null; render(true); } }, '← Zurück zum Training'),
+    h('h2', { style: 'margin:0 0 0 8px' }, 'Übung aus der Datenbank wählen')));
+  var listBox = h('div');
+  var draw = function (full) { if (full) { render(); return; } padsReset(); listBox.innerHTML = ''; fill(); layoutAll(); };
+  exFilterBar(w, draw, tr);
+  if (tr && !st.fMax) { var n = posSum(tr.participants.pos) || tr.participants.names.length; if (n) w.appendChild(h('div', { class: 'note' }, 'Training: ' + n + ' Teilnehmer')); }
+  w.appendChild(listBox);
+  function fill() {
+    var list = exFiltered();
+    if (!list.length) listBox.appendChild(h('div', { class: 'empty' }, DB.ex.size ? 'Keine passende Übung.' : 'Die Datenbank ist noch leer.'));
+    list.forEach(function (e) {
+      listBox.appendChild(exRow(e, function () {
+        var b = tr && tr.blocks.find(function (x) { return x.id === st.picker.block; });
+        if (!b) { st.picker = null; render(); return; }
+        b.items.push({ iid: uid(), own: false, ex: clone(e), field: '', note: null }); markTr(tr);
+        st.picker = null; render(); toast('„' + exLabel(e) + '“ eingefügt');
+      }));
+    });
+  }
+  fill();
+}
+
+/* ----- Übungen (Datenbank) ----- */
+function dirtyEdit() { return st.edit && JSON.stringify(st.edit) !== st.editOrig; }
+function renderExView(w) {
+  if (st.edit) { renderExEdit(w); return; }
+  w.appendChild(h('div', { class: 'row', style: 'margin-top:14px' }, h('h2', { style: 'margin:0;flex:1' }, 'Übungsdatenbank (' + DB.ex.size + ')'),
+    h('button', { class: 'btn pri', onclick: function () { var e = newEx(null); e.pmode = 'pos'; st.edit = e; st.editOrig = JSON.stringify(e); st.editNew = true; render(true); } }, '+ Neue Übung')));
+  var listBox = h('div');
+  var draw = function (full) { if (full) { render(); return; } padsReset(); listBox.innerHTML = ''; fill(); layoutAll(); };
+  exFilterBar(w, draw);
+  w.appendChild(listBox);
+  function fill() {
+    var list = exFiltered();
+    if (!list.length) listBox.appendChild(h('div', { class: 'empty' }, DB.ex.size ? 'Keine passende Übung.' : 'Noch keine Übungen. Sie entstehen hier mit „+ Neue Übung“ oder beim Planen eines Trainings.'));
+    list.forEach(function (e) { listBox.appendChild(exRow(e, function () { st.edit = clone(e); st.editOrig = JSON.stringify(st.edit); st.editNew = false; render(true); })); });
+  }
+  fill();
+}
+function renderExEdit(w) {
+  var ex = st.edit, isNew = st.editNew;
+  var missing = function () {
+    var m = [];
+    if (!ex.goals.length) m.push('Ziel');
+    if (posSum(ex.pos) < 1) m.push('Spieler je Position');
+    if (!hasDesc(ex)) m.push('Beschreibung');
+    return m;
+  };
+  var saveBtn = h('button', { class: 'btn pri' }, isNew ? 'In Datenbank speichern' : 'Speichern');
+  var info = h('span', { class: 'muted' });
+  var upd = function () { var m = missing(); saveBtn.disabled = !!m.length; info.textContent = m.length ? 'Fehlt: ' + m.join(', ') : ''; };
+  var doSave = function (asVariant) {
+    if (missing().length) return;
+    var c = clone(ex);
+    if (asVariant) { var o0 = DB.ex.get(ex.id); c.variantOf = ex.id; c.id = uid(); c.created = Date.now(); if (!ex.title || (o0 && o0.title === ex.title)) c.title = (ex.title || exLabel(ex)) + ' – Variante'; }
+    DB.ex.set(c.id, c); markEx(c); st.edit = null; toast(asVariant ? 'Als neue Variante gespeichert' : 'Gespeichert'); render();
+  };
+  saveBtn.onclick = function () { doSave(false); };
+  w.appendChild(h('div', { class: 'row', style: 'margin-top:12px' },
+    h('button', { class: 'btn', onclick: function () { go('ex', {}); } }, '← Übersicht'), h('div', { class: 'sp' }), info,
+    !isNew ? h('button', { class: 'btn', onclick: function () { if (missing().length) { toast('Fehlt: ' + missing().join(', ')); return; } doSave(true); } }, 'Als Variante speichern') : null,
+    !isNew ? h('button', { class: 'btn warn', onclick: async function () { if (await ask('Übung aus der Datenbank löschen? In bereits geplanten Trainings bleibt sie erhalten.', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { delEx(ex.id); st.edit = null; render(); } } }, 'Löschen') : null,
+    saveBtn));
+  if (ex.pmode !== 'pos') ex.pmode = 'pos';
+  w.appendChild(exCard(ex, { mode: 'db', posOnly: true, onChange: upd }));
+  upd();
+}
+
+/* ----- Durchführen ----- */
+function renderRun(w) {
+  var tr = st.runId && DB.tr.get(st.runId);
+  if (!tr) {
+    w.appendChild(h('h2', null, 'Training durchführen'));
+    var list = trSorted(), today = todayISO();
+    if (!list.length) { w.appendChild(h('div', { class: 'empty' }, 'Noch kein Training geplant.')); return; }
+    var next = list.slice().reverse().find(function (t) { return (t.date || '') >= today; });
+    list.forEach(function (t) {
+      w.appendChild(h('div', { class: 'trow', onclick: function () { go('run', { runId: t.id }); } },
+        h('div', { class: 't' }, h('b', null, trTitle(t), t.date === today ? h('span', { class: 'badge' }, 'Heute') : t === next ? h('span', { class: 'badge', style: 'background:#1f4fd1' }, 'Nächstes') : null),
+          h('span', { class: 'muted' }, trCount(t) + ' Übungen')), h('span', { class: 'muted' }, '›')));
+    });
+    return;
+  }
+  w.appendChild(h('div', { class: 'row', style: 'margin-top:12px' },
+    h('button', { class: 'btn', onclick: function () { go('run', { runId: null }); } }, '← Trainings'), h('div', { class: 'sp' }),
+    h('button', { class: 'btn', onclick: function () { go('plan', { trId: tr.id }); } }, '✎ Bearbeiten')));
+  var P = tr.participants, n = posSum(P.pos) || P.names.length;
+  var head = h('div', { class: 'card' }, h('h2', { style: 'margin:0 0 4px' }, trTitle(tr)),
+    n ? h('div', { class: 'muted' }, n + ' Teilnehmer' + (posSum(P.pos) ? ' (' + posText(P.pos) + ')' : '')) : null,
+    P.names.length ? h('div', { style: 'margin-top:6px' }, P.names.map(function (x) { return h('span', { class: 'chip' }, x); })) : null,
+    P.shots.length ? h('div', { class: 'thumbs', style: 'margin-top:8px' }, P.shots.map(function (src) { return h('div', { class: 'thumb', onclick: function () { openImage(src); } }, h('img', { src: src })); })) : null);
+  w.appendChild(head);
+  var times = blockTimes(tr);
+  tr.blocks.forEach(function (b, bi) {
+    var bl = h('div', { class: 'block' }, h('div', { class: 'bhead' }, h('h3', null, 'Block ' + (bi + 1)), times[bi] ? h('span', { class: 'time' }, timeLabel(times[bi])) : null,
+      b.dur ? h('span', { class: 'muted' }, b.dur + ' Min.') : null, b.items.length > 1 ? h('span', { class: 'muted' }, '· ' + b.items.length + ' Übungen parallel') : null));
+    if (!b.items.length) bl.appendChild(h('div', { class: 'muted', style: 'margin-top:6px' }, 'Keine Übung'));
+    b.items.forEach(function (it) { bl.appendChild(runItem(tr, it)); });
+    w.appendChild(bl);
+  });
+}
+function runItem(tr, it) {
+  var ex = it.ex, card = h('div', { class: 'card' });
+  var pl = players(ex);
+  card.appendChild(h('div', { class: 'row' }, h('b', { style: 'font-size:18px;flex:1;min-width:160px' }, exLabel(ex)),
+    it.field ? h('span', { class: 'field' }, 'Feld ' + it.field) : null,
+    pl ? h('span', { class: 'muted' }, pl + ' Spieler' + (ex.pmode === 'pos' && posSum(ex.pos) ? ' (' + posText(ex.pos) + ')' : '')) : null));
+  if (ex.goals.length || ex.tags.length) card.appendChild(h('div', { style: 'margin-top:4px' }, ex.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), ex.tags.map(function (g) { return h('span', { class: 'chip tag' }, g); })));
+  var ci = h('div'), cd = h('div');
+  if (ex.img) card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, ci, cd)); else card.appendChild(cd);
+  if (ex.img) imgCol(ci, ex, null, false, function () { openZoom(ex.img.ink, ex.img.bg, ex.img.src); });
+  descCol(cd, ex, null, false, function () { openText(ex); });
+  var nb = h('div'); card.appendChild(nb);
+  function drawNote() {
+    nb.innerHTML = '';
+    if (!it.note) { nb.appendChild(h('button', { class: 'btn sm', style: 'margin-top:8px', onclick: function () { it.note = { text: '', ink: { w: 600, h: 160, strokes: [] } }; markTr(tr); drawNote(); layoutAll(); updToolbar(); } }, '+ Notiz')); return; }
+    nb.appendChild(h('div', { class: 'lbl' }, 'Notiz'));
+    var ta = h('textarea', { value: it.note.text, placeholder: 'Notiz eintippen …', style: 'min-height:60px' });
+    ta.addEventListener('input', function () { it.note.text = ta.value; autoGrow(ta); markTr(tr); });
+    nb.appendChild(ta); setTimeout(function () { autoGrow(ta); }, 0);
+    var ph = h('div', { style: 'margin-top:6px' }); nb.appendChild(ph);
+    new Pad(ph, it.note.ink, { bg: 'lines', editable: true, grow: true, onChange: function () { markTr(tr); } });
+  }
+  drawNote();
+  return card;
+}
+
+/* ----- Vollbild ----- */
+function openZoom(d, bg, src) {
+  closePops();
+  var ov = h('div', { class: 'viewer' }), cv = h('canvas'); ov.appendChild(cv);
+  var ctx = cv.getContext('2d'), im = src ? imgFor(src, function () { draw(); }) : null;
+  var v = { x: 0, y: 0, s: 1 }, W = 0, H = 0, dpr = 1, fit;
+  function size() { W = innerWidth; H = innerHeight; dpr = Math.min(devicePixelRatio || 1, 2.5); cv.width = W * dpr; cv.height = H * dpr; fit = Math.min(W / d.w, H / d.h) * 0.96; }
+  function reset() { v.s = fit; v.x = (W - d.w * fit) / 2; v.y = (H - d.h * fit) / 2; }
+  function draw() { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.setTransform(dpr * v.s, 0, 0, dpr * v.s, dpr * v.x, dpr * v.y); paintDrawing(ctx, d, bg, im && im.complete ? im : null, v.s); }
+  function close() { ov.remove(); window.removeEventListener('resize', onR); }
+  function onR() { size(); reset(); draw(); }
+  ov.appendChild(h('div', { class: 'vbar' }, h('button', { onclick: function () { reset(); draw(); } }, '⤢'), h('button', { onclick: close }, '✕')));
+  var pts = new Map(), g = null, lastTap = 0, downAt = 0, moved = false;
+  function startG() {
+    var a = Array.from(pts.values());
+    if (a.length >= 2) g = { k: 2, v0: { x: v.x, y: v.y, s: v.s }, cx: (a[0].x + a[1].x) / 2, cy: (a[0].y + a[1].y) / 2, d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1 };
+    else if (a.length === 1) g = { k: 1, v0: { x: v.x, y: v.y, s: v.s }, cx: a[0].x, cy: a[0].y };
+    else g = null;
+  }
+  cv.addEventListener('pointerdown', function (e) { try { cv.setPointerCapture(e.pointerId); } catch (_) {} pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); downAt = now(); moved = false; startG(); });
+  cv.addEventListener('pointermove', function (e) {
+    if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (!g) return;
+    var a = Array.from(pts.values());
+    if (g.k === 2 && a.length >= 2) {
+      var cx = (a[0].x + a[1].x) / 2, cy = (a[0].y + a[1].y) / 2, dd = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1;
+      var ns = Math.max(fit * 0.5, Math.min(fit * 8, g.v0.s * dd / g.d)), wx = (g.cx - g.v0.x) / g.v0.s, wy = (g.cy - g.v0.y) / g.v0.s;
+      v.s = ns; v.x = cx - wx * ns; v.y = cy - wy * ns; moved = true;
+    } else if (g.k === 1) { var dx = a[0].x - g.cx, dy = a[0].y - g.cy; if (Math.abs(dx) + Math.abs(dy) > 4) moved = true; v.x = g.v0.x + dx; v.y = g.v0.y + dy; }
+    draw();
+  });
+  var upF = function (e) {
+    pts.delete(e.pointerId); startG();
+    if (!pts.size && !moved && now() - downAt < 300) {
+      if (now() - lastTap < 350) { if (v.s > fit * 1.05) reset(); else { var z = fit * 2.5, wx = (e.clientX - v.x) / v.s, wy = (e.clientY - v.y) / v.s; v.s = z; v.x = e.clientX - wx * z; v.y = e.clientY - wy * z; } draw(); lastTap = 0; }
+      else lastTap = now();
+    }
+  };
+  cv.addEventListener('pointerup', upF); cv.addEventListener('pointercancel', upF);
+  cv.addEventListener('wheel', function (e) { e.preventDefault(); if (e.ctrlKey || e.metaKey || true) { var ns = Math.max(fit * 0.5, Math.min(fit * 8, v.s * Math.exp(-e.deltaY * 0.004))), wx = (e.clientX - v.x) / v.s, wy = (e.clientY - v.y) / v.s; v.s = ns; v.x = e.clientX - wx * ns; v.y = e.clientY - wy * ns; draw(); } }, { passive: false });
+  document.body.appendChild(ov); size(); reset(); draw(); window.addEventListener('resize', onR);
+}
+function openText(ex) {
+  closePops();
+  var ov = h('div', { class: 'tview' }), body = h('div');
+  function draw() {
+    body.innerHTML = '';
+    body.appendChild(h('h2', { style: 'margin-top:0' }, exLabel(ex)));
+    if ((ex.desc.text || '').trim()) body.appendChild(h('div', { class: 'big', style: 'font-size:' + S.fs + 'px' }, ex.desc.text));
+    if (ex.desc.ink.strokes.length) { var ph = h('div', { style: 'max-width:' + Math.round(S.fs / 26 * 900) + 'px' }); body.appendChild(ph); var p = new Pad(ph, ex.desc.ink, { bg: 'lines' }); setTimeout(function () { p.layout(true); }, 0); }
+  }
+  ov.appendChild(h('div', { class: 'vbar' },
+    h('button', { onclick: function () { S.fs = Math.max(16, S.fs - 4); saveS(); draw(); } }, 'A−'),
+    h('button', { onclick: function () { S.fs = Math.min(60, S.fs + 4); saveS(); draw(); } }, 'A+'),
+    h('button', { onclick: function () { ov.remove(); } }, '✕')));
+  ov.appendChild(body); document.body.appendChild(ov); draw();
+}
+
+/* ================= Menü: Sichern, Laden, Einstellungen, Hilfe ================= */
+function updMenuDot() {
+  var old = !DB.kv.backup || Date.now() - DB.kv.backup > 3 * 864e5;
+  $('#menuBtn').classList.toggle('dot', !!(DB.kv.dirty && old && (DB.ex.size || DB.tr.size)));
+}
+function ago(t) { if (!t) return 'noch nie'; var d = Math.floor((Date.now() - t) / 864e5); return d <= 0 ? 'heute' : d === 1 ? 'gestern' : 'vor ' + d + ' Tagen'; }
+$('#menuBtn').onclick = function () {
+  if (curPop && curPop.dataset.for === 'menu') { closePops(); return; }
+  openPop($('#menuBtn'), 'menu', function (p) {
+    p.classList.add('menu');
+    p.appendChild(h('button', { onclick: function () { closePops(); exportAll(); } }, '💾 Sichern (Datei)'));
+    p.appendChild(h('button', { onclick: function () { closePops(); importAll(); } }, '📂 Laden (Datei)'));
+    p.appendChild(h('div', { class: 'note', style: 'padding:0 8px 6px' }, 'Letzte Sicherung: ' + ago(DB.kv.backup) + (DB.kv.dirty ? ' · seitdem geändert' : '')));
+    p.appendChild(h('button', { onclick: function () { closePops(); openSettings(); } }, '⚙︎ Einstellungen'));
+    p.appendChild(h('button', { onclick: function () { closePops(); openHelp(); } }, '? Hilfe'));
+    p.appendChild(h('div', { class: 'note', style: 'padding:4px 8px 0' }, 'VB Training ' + VERSION));
+  });
+};
+async function exportAll() {
+  flush();
+  var data = { app: 'vbtraining', v: 1, exported: new Date().toISOString(), ex: Array.from(DB.ex.values()), tr: Array.from(DB.tr.values()), lex: DB.kv.lex, deleted: DB.kv.deleted };
+  var name = 'vbtraining-' + todayISO() + '.json';
+  var blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  var done = function () { DB.kv.backup = Date.now(); DB.kv.dirty = false; markKv('backup'); markKv('dirty'); updMenuDot(); };
+  try {
+    var file = new File([blob], name, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); done(); toast('Gesichert'); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  try {
+    var a = h('a', { href: URL.createObjectURL(blob), download: name }); document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 3000); done(); toast('Datei „' + name + '“ gespeichert');
+  } catch (e) { toast('Sichern ist hier nicht möglich'); }
+}
+async function importAll() {
+  var fs = await pickFile(null); if (!fs.length) return;
+  var data;
+  try { data = JSON.parse(await fs[0].text()); } catch (e) { toast('Datei nicht lesbar'); return; }
+  if (!data || data.app !== 'vbtraining') { toast('Das ist keine VB-Training-Datei'); return; }
+  var del = data.deleted || {}, nEx = 0, nTr = 0, nDel = 0;
+  Object.keys(del).forEach(function (id) {
+    var t = del[id]; if (!DB.kv.deleted[id] || DB.kv.deleted[id] < t) DB.kv.deleted[id] = t;
+    var e = DB.ex.get(id); if (e && e.updated <= t) { DB.ex.delete(id); idbDel('ex', id); nDel++; }
+    var r = DB.tr.get(id); if (r && r.updated <= t) { DB.tr.delete(id); idbDel('tr', id); nDel++; }
+  });
+  (data.ex || []).forEach(function (e) {
+    if (DB.kv.deleted[e.id] && DB.kv.deleted[e.id] >= e.updated) return;
+    var c = DB.ex.get(e.id); if (!c || e.updated > c.updated) { DB.ex.set(e.id, e); dirtyEx.add(e.id); nEx++; }
+  });
+  (data.tr || []).forEach(function (e) {
+    if (DB.kv.deleted[e.id] && DB.kv.deleted[e.id] >= e.updated) return;
+    var c = DB.tr.get(e.id); if (!c || e.updated > c.updated) { DB.tr.set(e.id, e); dirtyTr.add(e.id); nTr++; }
+  });
+  var L = data.lex || {};
+  Object.keys(L).forEach(function (k) { DB.kv.lex[k] = DB.kv.lex[k] || {}; Object.keys(L[k]).forEach(function (w) { DB.kv.lex[k][w] = Math.max(DB.kv.lex[k][w] || 0, L[k][w]); }); });
+  markKv('lex'); markKv('deleted'); flush();
+  render();
+  ask('Geladen: ' + nEx + ' Übung(en) und ' + nTr + ' Training(s) neu oder aktualisiert' + (nDel ? ', ' + nDel + ' gelöscht' : '') + '. Was auf diesem Gerät neuer war, blieb erhalten.', [['OK', 1, 'pri']]);
+}
+function openSettings() {
+  var ov = h('div', { class: 'modal' }), box = h('div', { class: 'mbox', style: 'max-height:90vh;overflow:auto' });
+  function draw() {
+    box.innerHTML = '';
+    box.appendChild(h('h2', { style: 'margin-top:0' }, 'Einstellungen'));
+    box.appendChild(h('div', { class: 'lbl' }, 'Druck des Stifts'));
+    box.appendChild(segCtl([[true, 'Druck an'], [false, 'Gleich dick']], S.pressure, function (v) { S.pressure = v; saveS(); draw(); }));
+    if (S.pressure) {
+      var rg = h('input', { type: 'range', min: 0, max: 100, value: Math.round(S.sens * 100) });
+      rg.addEventListener('input', function () { S.sens = rg.value / 100; saveS(); });
+      box.appendChild(rg); box.appendChild(h('div', { class: 'note' }, 'Wenig ← Wirkung des Drucks → stark (gilt für neue Striche)'));
+    }
+    box.appendChild(h('div', { class: 'lbl' }, 'Finger auf den Schreibflächen'));
+    box.appendChild(segCtl([[false, 'Scrollt (empfohlen)'], [true, 'Schreibt']], S.finger, function (v) { S.finger = v; saveS(); draw(); render(); }));
+    box.appendChild(h('div', { class: 'note' }, '„Schreibt“ nur für Geräte ohne Stift (z. B. iPhone). Dann scrollt man außerhalb der Schreibflächen.'));
+    box.appendChild(h('div', { class: 'mbtns', style: 'margin-top:16px' }, h('button', { class: 'btn pri', onclick: function () { ov.remove(); } }, 'Fertig')));
+  }
+  draw(); ov.appendChild(box); document.body.appendChild(ov);
+}
+function openHelp() {
+  var ov = h('div', { class: 'tview help' });
+  ov.appendChild(h('div', { class: 'vbar' }, h('button', { onclick: function () { ov.remove(); } }, '✕')));
+  ov.appendChild(h('div', { class: 'wrap', style: '-webkit-user-select:text;user-select:text', html:
+    '<h2 style="margin-top:0">Hilfe – VB Training ' + VERSION + '</h2>' +
+    '<h3>Installation</h3><ul>' +
+    '<li><b>iPad/iPhone:</b> Adresse in Safari öffnen → Teilen □↑ → „Zum Home-Bildschirm“ („Als Web-App öffnen“ eingeschaltet lassen) → Hinzufügen. Danach nur über das Symbol starten.</li>' +
+    '<li><b>Android:</b> Adresse in Chrome öffnen → ⋮ → „App installieren“ bzw. „Zum Startbildschirm hinzufügen“.</li>' +
+    '<li><b>Mac:</b> Safari → Ablage → „Zum Dock hinzufügen“, oder Lesezeichen.</li>' +
+    '<li>Die App läuft danach offline. Neue Version: App mit Internet öffnen → grüne Leiste antippen.</li></ul>' +
+    '<h3>Planen</h3><ul><li>„+ Neues Training“: Datum, Beginn, Ort, Teilnehmer (Namen oder Screenshots, z. B. aus Spond), optional Positionen.</li>' +
+    '<li>Ein <b>Block</b> hat eine Dauer; daraus werden die Uhrzeiten berechnet. In einem Block können mehrere Übungen parallel laufen (Feld angeben).</li>' +
+    '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
+    '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
+    '<li>Ziele, Stichworte, Namen, Orte und Felder lernt die App und schlägt sie wieder vor.</li></ul>' +
+    '<h3>Schreiben mit dem Stift</h3><ul><li>Nur der Stift schreibt; Finger und Handballen scrollen nicht, solange geschrieben wird.</li>' +
+    '<li>Werkzeuge oben: drei Stifte, Textmarker, Radierer. <b>Aktives Werkzeug nochmals antippen</b> → Farbe und Stärke (Radierer: ganzer Strich oder nur Bereich).</li>' +
+    '<li>Bild: Spielfeld, Halbfeld, leer, oder ein Bild einfügen. Aufstellung aus dem Coaching Board: dort „Kopieren“, hier „📋 Einfügen“ – oder dort „Export“ und hier „🖼 Foto/Datei“. Auf jedes Bild kann man malen.</li></ul>' +
+    '<h3>Durchführen</h3><ul><li>Das Training als Liste. Bild oder Beschreibung antippen → Vollbild. Im Vollbild: zwei Finger zoomen, doppelt tippen vergrößert bzw. zurück.</li><li>„+ Notiz“ für Anmerkungen (Text oder Stift).</li></ul>' +
+    '<h3>Übungen</h3><ul><li>Übungen direkt für die Datenbank anlegen. Hier sind Ziel, Spieler je Position und Beschreibung Pflicht.</li><li>Suchen und nach Ziel oder Spielerzahl filtern.</li></ul>' +
+    '<h3>Sichern und auf andere Geräte bringen</h3><ul><li>Alle Daten liegen nur auf diesem Gerät. <b>☰ → Sichern</b> legt eine Datei ab (z. B. in iCloud Drive, OneDrive oder Google Drive über „In Dateien sichern“).</li>' +
+    '<li>Auf dem anderen Gerät: <b>☰ → Laden</b> und die Datei wählen. Laden ergänzt: Neueres bleibt erhalten, gelöschte Einträge werden auch dort gelöscht.</li>' +
+    '<li>Regelmäßig sichern! Ein Punkt am ☰ erinnert, wenn länger nicht gesichert wurde. Wird die App gelöscht, sind die Daten auf dem Gerät weg.</li></ul>' +
+    '<h3>Datenschutz</h3><p>Alle Eingaben (Übungen, Trainings, Namen, Bilder) bleiben auf dem Gerät bzw. in den Dateien, die du selbst sicherst. Die App sendet nichts an einen Server. Die Seite wird bei GitHub gehostet; GitHub verarbeitet beim Aufruf technische Daten (z. B. IP-Adresse).</p>' +
+    '<h3>Haftungsausschluss</h3><p>Die App wird ohne Gewähr bereitgestellt. Für Datenverluste oder Fehler wird keine Haftung übernommen. Bitte regelmäßig sichern.</p>' +
+    '<h3>Über diese App</h3><p>Private, kostenlose App ohne Werbung. Kontakt und Rückmeldungen: github.com/app-laden</p>' }));
+  document.body.appendChild(ov);
+}
+
+/* ================= Aktualisierung (Service Worker) ================= */
+(function () {
+  if (!('serviceWorker' in navigator) || location.protocol !== 'https:') return;
+  try {
+    navigator.serviceWorker.register('sw.js').then(function (reg) {
+      var show = function () { var b = $('#upd'); b.style.display = 'block'; b.onclick = function () { if (reg.waiting) reg.waiting.postMessage('skip'); }; };
+      if (reg.waiting && navigator.serviceWorker.controller) show();
+      reg.addEventListener('updatefound', function () {
+        var w = reg.installing; if (!w) return;
+        w.addEventListener('statechange', function () { if (w.state === 'installed' && navigator.serviceWorker.controller) show(); });
+      });
+    }).catch(function () {});
+    var reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () { if (reloaded) return; reloaded = true; flush(); location.reload(); });
+  } catch (e) {}
+})();
+
+/* ================= Start ================= */
+(async function start() {
+  try {
+    idb = await idbOpen();
+    var ex = await idbAll('ex'), tr = await idbAll('tr'), keys = await idbAll('kv', true), vals = await idbAll('kv');
+    ex.forEach(function (e) { DB.ex.set(e.id, e); });
+    tr.forEach(function (t) { DB.tr.set(t.id, t); });
+    keys.forEach(function (k, i) { DB.kv[k] = vals[i]; });
+  } catch (e) { idb = null; toast('Speicher nicht verfügbar – Eingaben gehen beim Schließen verloren.', 6000); }
+  DB.kv.lex = DB.kv.lex || {}; DB.kv.last = DB.kv.last || {}; DB.kv.deleted = DB.kv.deleted || {};
+  if (DB.kv.settings) S = Object.assign(clone(DEF_SET), DB.kv.settings);
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  refreshPens(); updMenuDot();
+  render(true);
+})();
+</script>
+</body>
+</html>
