@@ -1,0 +1,2 @@
+# trainingsplanung
+Trainingsplanung mit Datenbank
