@@ -206,7 +206,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.15';
+var VERSION = '0.9.17';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -293,9 +293,10 @@ function normTr(tr) {
   tr.blocks.forEach(function (b) {
     if (!b.seq) { // bis 0.9.14 liefen alle Übungen eines Blocks parallel
       b.items.forEach(function (it, i) { it.par = i > 0; });
-      if (b.dur && b.items[0]) { b.items[0].dur = b.dur; delete b.dur; }
+      if (b.dur && b.items[0]) b.items[0].dur = b.dur;
       b.seq = 1;
     }
+    if (b.dur == null) { var ss0 = steps(b); if (ss0.length && ss0.every(function (x) { return +x.lead.dur > 0; })) b.dur = ss0.reduce(function (a, x) { return a + (+x.lead.dur); }, 0); }
     fixPar(b);
   });
   tr.blocks.forEach(function (b) { b.items.forEach(function (it) {
@@ -501,10 +502,18 @@ function removeItem(b, i) {
   if (!it.par && nx && nx.par) { nx.par = false; nx.dur = it.dur; }
   b.items.splice(i, 1); fixPar(b);
 }
+function stepMode() { return S.durMode === 'step'; }
 function trSchedule(tr) {
-  var t = parseTime(tr.time), num = 0, res = { blocks: [], steps: {}, nums: {} };
+  var t = parseTime(tr.time), num = 0, res = { blocks: [], steps: {}, nums: {} }, perStep = stepMode();
   tr.blocks.forEach(function (b) {
     var ss = steps(b), bs = t, sum = 0, full = true;
+    if (!perStep) {
+      ss.forEach(function (s) { num++; s.items.forEach(function (x, k) { res.nums[x.it.iid] = s.items.length > 1 ? num + '.' + (k + 1) : '' + num; }); });
+      var db = +b.dur || 0;
+      res.blocks.push({ t: t == null ? null : { s: t, e: db ? t + db : null }, dur: db || null, full: true });
+      t = (t != null && db) ? t + db : null;
+      return;
+    }
     if (!ss.length) {
       var d0 = +b.dur || 0;
       res.blocks.push({ t: t != null && d0 ? { s: t, e: t + d0 } : null, dur: d0 || null, full: true });
@@ -1391,7 +1400,8 @@ function renderPlan(w) {
     bl.appendChild(h('div', { class: 'bhead' },
       h('h3', null, 'Block ' + (bi + 1)),
       B.t ? h('span', { class: 'time' }, timeLabel(B.t)) : null,
-      B.dur ? h('span', { class: 'muted' }, durLabel(B)) : null,
+      stepMode() ? (B.dur ? h('span', { class: 'muted' }, durLabel(B)) : null) : h('span', { class: 'muted' }, 'Dauer'), stepMode() ? null : blockDurIn(b),
+      stepMode() ? null : h('span', { class: 'muted' }, 'Min.'),
       h('div', { class: 'sp' }),
       h('button', { class: 'btn sm', disabled: bi === 0, onclick: function () { tr.blocks.splice(bi, 1); tr.blocks.splice(bi - 1, 0, b); chTr(); render(); } }, '↑'),
       h('button', { class: 'btn sm', disabled: bi === tr.blocks.length - 1, onclick: function () { tr.blocks.splice(bi, 1); tr.blocks.splice(bi + 1, 0, b); chTr(); render(); } }, '↓'),
@@ -1401,6 +1411,12 @@ function renderPlan(w) {
       } }, 'Block entfernen')));
     steps(b).forEach(function (s) {
       var lead = s.lead, par = s.items.length > 1, T = sch.steps[lead.iid];
+      if (!stepMode()) {
+        var bx = h('div', { class: 'step' + (par ? ' par' : '') });
+        if (par) bx.appendChild(h('div', { class: 'stephead' }, h('b', { class: 'partag' }, '∥ ' + stepNums(sch, s) + ' parallel')));
+        s.items.forEach(function (x) { bx.appendChild(planItem(tr, b, x.it, x.i, sch.nums[x.it.iid])); });
+        bl.appendChild(bx); return;
+      }
       var durIn = h('input', { type: 'number', min: 0, step: 5, value: lead.dur || '', placeholder: '–', style: 'width:72px', inputMode: 'numeric' });
       durIn.addEventListener('change', function () { lead.dur = durIn.value ? +durIn.value : null; chTr(); render(); });
       var box = h('div', { class: 'step' + (par ? ' par' : '') });
@@ -1417,6 +1433,11 @@ function renderPlan(w) {
     w.appendChild(bl);
   });
   w.appendChild(h('button', { class: 'btn', style: 'margin:6px 0 20px', onclick: function () { tr.blocks.push(newBlock()); chTr(); render(); } }, '+ Übungsblock'));
+}
+function blockDurIn(b) {
+  var i = h('input', { type: 'number', min: 0, step: 5, value: b.dur || '', placeholder: 'Dauer', style: 'width:80px', inputMode: 'numeric' });
+  i.addEventListener('change', function () { b.dur = i.value ? +i.value : null; var t = DB.tr.get(st.trId); if (t) markTr(t); render(); });
+  return i;
 }
 var ownTimers = {};
 function planItem(tr, b, it, ii, num) {
@@ -1618,7 +1639,7 @@ function renderRun(w) {
       B.dur ? h('span', { class: 'muted' }, durLabel(B)) : null));
     if (!b.items.length) bl.appendChild(h('div', { class: 'muted', style: 'margin-top:6px' }, 'Keine Übung'));
     steps(b).forEach(function (s) {
-      var par = s.items.length > 1, T = sch.steps[s.lead.iid], d = +s.lead.dur;
+      var par = s.items.length > 1, T = sch.steps[s.lead.iid], d = stepMode() ? +s.lead.dur : 0;
       var box = h('div', { class: 'step' + (par ? ' par' : '') });
       if (par || T || d) box.appendChild(h('div', { class: 'stephead' },
         par ? h('b', { class: 'partag' }, '∥ ' + stepNums(sch, s) + ' parallel') : h('b', null, 'Übung ' + stepNums(sch, s)),
@@ -1921,7 +1942,7 @@ async function makeTrainingPdf(tr, opt) {
     b.items.forEach(function (it, ii) {
       var ex = it.ex, S = stepOf[ii], par = S.items.length > 1, first = S.lead === it;
       if (first) {
-        var T = sch.steps[it.iid], d = +it.dur;
+        var T = sch.steps[it.iid], d = stepMode() ? +it.dur : 0;
         var sl = (par ? stepNums(sch, S) + ' parallel' : 'Übung ' + stepNums(sch, S)) + (T ? '   ' + timeLabel(T) : '') + (d ? '   (' + d + ' Min.)' : '');
         if (par || T || d) { need(14); txt(sl, M, y + 4, 10, 'bold', par ? [47, 90, 190] : [90, 90, 90]); y += 6; }
       }
@@ -2059,6 +2080,7 @@ $('#menuBtn').onclick = function () {
     p.classList.add('menu');
     p.appendChild(h('button', { onclick: function () { closePops(); exportAll(); } }, '💾 Sichern (Datei)'));
     p.appendChild(h('button', { onclick: function () { closePops(); importAll(); } }, '📂 Laden (Datei)'));
+    p.appendChild(h('button', { onclick: function () { closePops(); exportSelection(); } }, '📤 Trainings weitergeben …'));
     p.appendChild(h('div', { class: 'note', style: 'padding:0 8px 6px' }, S.saveMode === 'split'
       ? 'Übungen gesichert: ' + ago(DB.kv.backupEx) + (DB.kv.dirtyEx ? ' (seitdem geändert)' : '') + ' · Trainings: ' + ago(DB.kv.backupTr) + (DB.kv.dirtyTr ? ' (seitdem geändert)' : '')
       : 'Letzte Sicherung: ' + ago(Math.min(DB.kv.backupEx || 0, DB.kv.backupTr || 0) || null) + ((DB.kv.dirtyEx || DB.kv.dirtyTr) ? ' · seitdem geändert' : '')));
@@ -2069,8 +2091,8 @@ $('#menuBtn').onclick = function () {
   });
 };
 var EMBED = (function () { try { return window.top !== window.self; } catch (e) { return true; } })();
-var FILE_BASE = { all: 'vbtraining-', exercises: 'vbtraining-uebungen-', trainings: 'vbtraining-trainings-' };
-var KIND_NAME = { all: 'Gesamtdatei', exercises: 'Übungsdatenbank', trainings: 'Trainings' };
+var FILE_BASE = { all: 'vbtraining-', exercises: 'vbtraining-uebungen-', trainings: 'vbtraining-trainings-', selection: 'vbtraining-auswahl-' };
+var KIND_NAME = { all: 'Gesamtdatei', exercises: 'Übungsdatenbank', trainings: 'Trainings', selection: 'Auswahl' };
 // Sicherungsdaten: kind 'all' (alles), 'exercises' (Übungen) oder 'trainings'
 function dataPart(src, kind) {
   var d = { app: 'vbtraining', v: 1, kind: kind, appVersion: VERSION, exported: new Date().toISOString(), lex: src.lex || {}, deleted: src.deleted || {} };
@@ -2160,6 +2182,89 @@ function exportAll() {
     h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Abbrechen'))));
   document.body.appendChild(ov);
 }
+/* ----- Einzelne Trainings weitergeben / übernehmen ----- */
+// Ausgewählte Trainings + die darin verwendeten Datenbank-Übungen + passende Vorschläge. Keine Löschungen.
+function selectionData(src, ids) {
+  var exById = {}; (src.ex || []).forEach(function (e) { exById[e.id] = e; });
+  var tr = (src.tr || []).filter(function (t) { return ids.indexOf(t.id) >= 0; });
+  var ex = {}, lex = {};
+  var L = function (k, w) { w = String(w || '').trim(); if (!w) return; lex[k] = lex[k] || {}; lex[k][w] = Math.max(lex[k][w] || 0, 1); };
+  tr.forEach(function (t) {
+    L('teams', t.team); L('places', t.place); (t.goals || []).forEach(function (g) { L('goals', g); });
+    ((t.participants && t.participants.names) || []).forEach(function (n) { L('names', n); });
+    t.blocks.forEach(function (b) { b.items.forEach(function (it) {
+      L('fields', it.field); (it.ex.goals || []).forEach(function (g) { L('goals', g); });
+      var e = exById[it.ex.id]; if (e) { ex[e.id] = e; (e.goals || []).forEach(function (g) { L('goals', g); }); }
+    }); });
+  });
+  return { app: 'vbtraining', v: 1, kind: 'selection', appVersion: VERSION, exported: new Date().toISOString(), lex: lex, deleted: {}, ex: Object.keys(ex).map(function (k) { return ex[k]; }), tr: tr };
+}
+function trChecklist(list, pre, info) {
+  var sel = {}; list.forEach(function (t) { sel[t.id] = pre.indexOf(t.id) >= 0; });
+  var box = h('div', { class: 'trcheck' }), cnt = h('span', { class: 'muted' });
+  var upd = function () { var n = list.filter(function (t) { return sel[t.id]; }).length; cnt.textContent = n + ' von ' + list.length + ' ausgewählt'; if (box.onsel) box.onsel(n); };
+  var boxes = [];
+  list.forEach(function (t) {
+    var cb = h('input', { type: 'checkbox', style: 'width:22px;height:22px;flex:none' }); cb.checked = sel[t.id]; boxes.push([cb, t]);
+    cb.addEventListener('change', function () { sel[t.id] = cb.checked; upd(); });
+    var tt = []; t.blocks.forEach(function (b) { b.items.forEach(function (it) { tt.push(exLabel(it.ex)); }); });
+    var ttx = tt.length ? tt.length + ' Übung(en): ' + tt.slice(0, 3).join(', ') + (tt.length > 3 ? ' …' : '') : 'keine Übungen';
+    box.appendChild(h('label', { style: 'display:flex;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid #eee' }, cb,
+      h('div', { style: 'flex:1' }, h('div', null, trTitle(t)), h('div', { class: 'note' }, ttx + (info ? info(t) : '')))));
+  });
+  var all = function (v) { boxes.forEach(function (x) { x[0].checked = v; sel[x[1].id] = v; }); upd(); };
+  var head = h('div', { class: 'row', style: 'margin:6px 0' }, h('button', { class: 'btn sm', onclick: function () { all(true); } }, 'Alle'), h('button', { class: 'btn sm', onclick: function () { all(false); } }, 'Keine'), cnt);
+  var wrap = h('div', null, head, h('div', { style: 'max-height:46vh;overflow:auto;border:1px solid #e1e1db;border-radius:10px;padding:0 8px;background:#fff' }, box));
+  wrap.selected = function () { return list.filter(function (t) { return sel[t.id]; }).map(function (t) { return t.id; }); };
+  wrap.onChange = function (f) { box.onsel = f; upd(); };
+  return wrap;
+}
+function sortTr(a) { return a.slice().sort(function (x, y) { return (y.date || '').localeCompare(x.date || '') || (y.time || '').localeCompare(x.time || ''); }); }
+function exportSelection() {
+  if (!DB.tr.size) { toast('Noch kein Training vorhanden'); return; }
+  var cur = st.view === 'run' ? st.runId : st.trId;
+  var ov = h('div', { class: 'modal' }), close = function () { ov.remove(); };
+  var cl = trChecklist(trSorted(), cur ? [cur] : []);
+  var btn = h('button', { class: 'btn pri', onclick: function () {
+    var ids = cl.selected(); if (!ids.length) return;
+    close();
+    var d = selectionData(appData(), ids);
+    deliverDialog('Trainings weitergeben', d.tr.length + ' Training(s) mit ' + d.ex.length + ' Übung(en) aus der Datenbank. Auf dem anderen Gerät: ☰ → Laden → diese Datei. Dort wird nur ergänzt, nichts gelöscht.',
+      function () { return [fileOf(d)]; }, null);
+  } }, 'Weiter');
+  cl.onChange(function (n) { btn.disabled = !n; });
+  ov.appendChild(h('div', { class: 'mbox' },
+    h('h2', { style: 'margin-top:0' }, 'Trainings weitergeben'),
+    h('div', { class: 'mtxt' }, 'Ausgewählte Trainings samt ihren Übungen in eine Datei legen, z. B. um sie von einem anderen Gerät in die eigene Datenbank zu übernehmen.'),
+    cl,
+    h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Abbrechen'), btn)));
+  document.body.appendChild(ov);
+}
+// Aus einer beliebigen Datei nur ausgewählte Trainings (mit ihren Übungen) übernehmen
+async function importSelection() {
+  var fs = await pickFile(null, true); if (!fs.length) return;
+  var ds = await readFiles(fs); if (!ds.length) return;
+  var m = mergeFileData(ds);
+  if (!m.tr.length) { ask('In ' + (fs.length > 1 ? 'diesen Dateien' : 'dieser Datei') + ' sind keine Trainings.', [['OK', 1, 'pri']]); return; }
+  var ov = h('div', { class: 'modal' }), close = function () { ov.remove(); };
+  var info = function (t) { var c = DB.tr.get(t.id); return !c ? ' · neu' : t.updated > c.updated ? ' · schon vorhanden, Datei ist neuer' : ' · schon vorhanden, hier aktuell'; };
+  var list = sortTr(m.tr);
+  var cl = trChecklist(list, list.filter(function (t) { var c = DB.tr.get(t.id); return !c || t.updated > c.updated; }).map(function (t) { return t.id; }), info);
+  var btn = h('button', { class: 'btn pri', onclick: function () {
+    var ids = cl.selected(); if (!ids.length) return;
+    close();
+    var d = selectionData(m, ids); d.tr.forEach(normTr); d.ex.forEach(normEx);
+    var r = importData(d); render();
+    ask('Übernommen: ' + r.tr + ' Training(s) und ' + r.ex + ' Übung(en) neu oder aktualisiert. Was auf diesem Gerät neuer war, blieb erhalten; gelöscht wurde nichts.', [['OK', 1, 'pri']]);
+  } }, 'Übernehmen');
+  cl.onChange(function (n) { btn.disabled = !n; });
+  ov.appendChild(h('div', { class: 'mbox' },
+    h('h2', { style: 'margin-top:0' }, 'Trainings übernehmen'),
+    h('div', { class: 'mtxt' }, 'Ausgewählte Trainings und die darin verwendeten Übungen kommen in die Daten auf diesem Gerät. Andere Inhalte der Datei und Löschungen werden nicht übernommen.'),
+    cl,
+    h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Abbrechen'), btn)));
+  document.body.appendChild(ov);
+}
 async function readFiles(fs) {
   var out = [];
   for (var i = 0; i < fs.length; i++) {
@@ -2184,6 +2289,7 @@ function importAll() {
         var ds = await readFiles(fs); if (!ds.length) return;
         close(); importMany(ds);
       } }, '📂 Datei(en) wählen …'),
+      h('button', { class: 'btn', onclick: function () { close(); importSelection(); } }, '☑ Nur einzelne Trainings aus einer Datei …'),
       h('button', { class: 'btn', onclick: function () { ta.style.display = 'block'; go.style.display = 'block'; ta.focus(); } }, '⧉ Text einfügen')),
     ta, go,
     h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: close }, 'Abbrechen'))));
@@ -2349,6 +2455,9 @@ function openSettings() {
     box.appendChild(segCtl([[true, 'Liniert'], [false, 'Blanko']], S.lines !== false, function (v) { S.lines = v; saveS(); draw(); render(); }));
     var cu = h('input', { type: 'url', value: coachUrl(), style: 'width:100%', autocapitalize: 'off', spellcheck: false });
     cu.addEventListener('change', function () { S.coachUrl = cu.value.trim() || DEF_SET.coachUrl; cu.value = S.coachUrl; saveS(); });
+    box.appendChild(h('div', { class: 'lbl' }, 'Dauer im Training festlegen'));
+    box.appendChild(segCtl([['block', 'Je Block'], ['step', 'Je Übung']], stepMode() ? 'step' : 'block', function (v) { S.durMode = v; saveS(); draw(); render(); }));
+    box.appendChild(h('div', { class: 'note' }, stepMode() ? 'Jede Übung (bzw. jede Gruppe paralleler Übungen) bekommt eine Dauer; die Blockdauer ist die Summe.' : 'Jeder Block bekommt eine Dauer; daraus werden die Uhrzeiten der Blöcke berechnet.') );
     box.appendChild(h('div', { class: 'lbl' }, 'Speichern (☰ → Sichern)'));
     box.appendChild(segCtl([['one', 'Alles in einer Datei'], ['split', 'Übungen und Trainings getrennt']], S.saveMode === 'split' ? 'split' : 'one', function (v) { S.saveMode = v; saveS(); draw(); updMenuDot(); }));
     box.appendChild(h('div', { class: 'note' }, S.saveMode === 'split' ? 'Zwei Dateien: vbtraining-uebungen-… (Übungsdatenbank) und vbtraining-trainings-… (Trainings).' : 'Eine Datei vbtraining-… mit Übungen, Trainings und Vorschlägen.'));
@@ -2377,8 +2486,8 @@ function openHelp() {
     '<li><b>Mac:</b> Safari → Ablage → „Zum Dock hinzufügen“, oder Lesezeichen.</li>' +
     '<li>Die App läuft danach offline. Neue Version: App mit Internet öffnen → grüne Leiste antippen.</li></ul>' +
     '<h3>Planen</h3><ul><li>„+ Neues Training“: Datum, Beginn, Ort, Teilnehmer (Namen oder Screenshots, z. B. aus Spond), optional Positionen. Screenshots per „Foto/Datei“ oder „📋 Screenshot einfügen“ (Zwischenablage). Man kann direkt mit dem Stift darauf schreiben; Größe am blauen Punkt ziehen; ⤢ Vollbild; × entfernt.</li>' +
-    '<li>Die Übungen eines <b>Blocks</b> laufen nacheinander und sind durchnummeriert (1, 2, 3 …). Jede Übung bekommt eine Dauer; daraus werden die Uhrzeiten und die Dauer des Blocks berechnet.</li>' +
-    '<li><b>∥ parallel</b> an einer Übung: Sie läuft gleichzeitig mit der Übung davor. Parallele Übungen bekommen einen blauen Rahmen und Unternummern (3.1, 3.2 …); die Dauer gilt für die ganze Gruppe. Am besten das Feld angeben.</li>' +
+    '<li>Die Übungen eines <b>Blocks</b> laufen nacheinander und sind durchnummeriert (1, 2, 3 …). Die <b>Dauer</b> gibt man je Block an; unter ☰ → Einstellungen umschaltbar auf <b>je Übung</b> (dann ist die Blockdauer die Summe). Daraus werden die Uhrzeiten berechnet. Beide Angaben bleiben gespeichert, man kann also hin und her schalten.</li>' +
+    '<li><b>∥ parallel</b> an einer Übung: Sie läuft gleichzeitig mit der Übung davor. Parallele Übungen bekommen einen blauen Rahmen und Unternummern (3.1, 3.2 …); bei Dauer je Übung gilt sie für die ganze Gruppe. Am besten das Feld angeben.</li>' +
     '<li><b>Trainingsphase</b> (optional): Aufwärmen, Einspielen, Grundtechnik, Taktik, Komplex oder Spiel. In der Übungsliste lässt sich danach filtern.</li>' +
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
@@ -2396,6 +2505,7 @@ function openHelp() {
     '<h3>Übungen</h3><ul><li>Übungen direkt für die Datenbank anlegen. Hier sind Ziel, Spieler je Position und Beschreibung Pflicht.</li><li>Suchen und nach Ziel oder Spielerzahl filtern.</li></ul>' +
     '<h3>Sichern und auf andere Geräte bringen</h3><ul><li>☰ → Einstellungen → <b>Speichern</b>: alles in einer Datei, oder Übungsdatenbank und Trainings getrennt. Dort kann man auch eine vorhandene Gesamtdatei aufteilen oder zwei Dateien zusammenführen. Laden versteht alle Dateiarten, auch mehrere auf einmal.</li><li>Alle Daten liegen nur auf diesem Gerät. <b>☰ → Sichern</b> legt eine Datei ab (z. B. in iCloud Drive, OneDrive oder Google Drive über „In Dateien sichern“).</li>' +
     '<li>Auf dem anderen Gerät: <b>☰ → Laden</b> und die Datei wählen. Laden ergänzt: Neueres bleibt erhalten, gelöschte Einträge werden auch dort gelöscht.</li>' +
+    '<li><b>Training auf einem anderen Gerät geplant?</b> Dort <b>☰ → Trainings weitergeben</b>, Trainings ankreuzen und die Datei sichern bzw. teilen. Auf dem eigenen Gerät <b>☰ → Laden</b> und die Datei wählen: Die Trainings und ihre Übungen kommen dazu, gelöscht wird nichts. Alternativ <b>☰ → Laden → „Nur einzelne Trainings aus einer Datei“</b>: aus jeder Sicherung (auch einer Gesamtdatei des anderen Geräts) nur die angekreuzten Trainings übernehmen.</li>' +
     '<li>Regelmäßig sichern! Ein Punkt am ☰ erinnert, wenn länger nicht gesichert wurde. Wird die App gelöscht, sind die Daten auf dem Gerät weg.</li></ul>' +
     '<h3>Datenschutz</h3><p>Alle Eingaben (Übungen, Trainings, Namen, Bilder) bleiben auf dem Gerät bzw. in den Dateien, die du selbst sicherst. Die App sendet nichts an einen Server. Die Seite wird bei GitHub gehostet; GitHub verarbeitet beim Aufruf technische Daten (z. B. IP-Adresse).</p>' +
     '<h3>Haftungsausschluss</h3><p>Die App wird ohne Gewähr bereitgestellt. Für Datenverluste oder Fehler wird keine Haftung übernommen. Bitte regelmäßig sichern.</p>' +
