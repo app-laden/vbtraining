@@ -38,6 +38,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 .wrap{max-width:1150px;margin:0 auto}
 .card{background:#fff;border:1px solid #e1e1db;border-radius:14px;padding:12px 14px;margin:12px 0}
 .block{background:#f8f8f5;border:1px solid #d9d9d2;border-radius:16px;padding:10px 12px;margin:16px 0}
+.step{margin-top:10px}
+.step.par{border:2px solid #7d9be0;border-radius:14px;padding:4px 8px 8px;background:#eef3fd}
+.stephead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:15px;margin:4px 2px}
+.partag{color:#2f5abe}
+.num{background:var(--acc);color:#fff;border-radius:8px;padding:2px 8px;font-weight:700;font-size:15px;flex:none;line-height:1.5}
+.btn.partog.on{background:#2f5abe;color:#fff;border-color:#2f5abe}
 .bhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .bhead h3{margin:0;font-size:17px}
 .time{background:#e8eefb;color:#1d3f8f;border-radius:8px;padding:3px 8px;font-weight:600;font-size:15px}
@@ -55,6 +61,9 @@ h2{font-size:20px;margin:16px 0 8px}
 .chip.sug{background:#f0f0eb;color:#555}
 .chip.sug:before{content:'+';font-weight:700}
 .chip.tag{background:#eee7f8;color:#5a2f99}
+.chip.off{background:#f0f0eb;color:#666}
+.chip.ph.on{background:#6b3fb0;color:#fff}
+.phases{display:flex;flex-wrap:wrap}
 .chip.on{background:var(--acc);color:#fff}
 .chip .x{font-weight:700;opacity:.6}
 .chipin input{border:0;padding:6px 4px;min-width:120px;outline:none;background:transparent}
@@ -197,7 +206,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.14';
+var VERSION = '0.9.15';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -268,7 +277,10 @@ function htmlText(html) {
   return t.content.textContent;
 }
 function textToHtml(t) { return String(t || '').replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }).replace(/\n/g, '<br>'); }
+var PHASES = ['Aufwärmen', 'Einspielen', 'Grundtechnik', 'Taktik', 'Komplex', 'Spiel'];
 function normEx(ex) {
+  if (!ex.phases) { ex.phases = []; (ex.tags || []).forEach(function (t) { var m = PHASES.find(function (x) { return x.toLowerCase() === String(t).trim().toLowerCase(); }); if (m && ex.phases.indexOf(m) < 0) ex.phases.push(m); }); }
+  ex.phases.sort(function (a, b) { return PHASES.indexOf(a) - PHASES.indexOf(b); });
   if (ex.desc && ex.desc.html == null) { ex.desc.html = textToHtml(ex.desc.text); delete ex.desc.text; }
   if (ex.img && !ex.img.wpct) ex.img.wpct = 50;
   return ex;
@@ -278,6 +290,14 @@ function normTr(tr) {
   tr.goals = tr.goals || [];
   if (tr.team == null) tr.team = '';
   tr.participants.shots = (tr.participants.shots || []).map(shotObj);
+  tr.blocks.forEach(function (b) {
+    if (!b.seq) { // bis 0.9.14 liefen alle Übungen eines Blocks parallel
+      b.items.forEach(function (it, i) { it.par = i > 0; });
+      if (b.dur && b.items[0]) { b.items[0].dur = b.dur; delete b.dur; }
+      b.seq = 1;
+    }
+    fixPar(b);
+  });
   tr.blocks.forEach(function (b) { b.items.forEach(function (it) {
     normEx(it.ex);
     if (it.note && it.note.html == null) { it.note.html = textToHtml(it.note.text); delete it.note.text; }
@@ -426,13 +446,13 @@ function posText(p) { return POS.filter(function (k) { return p[k]; }).map(funct
 function newEx(tr) {
   var p = tr ? posSum(tr.participants.pos) : 0, n = tr ? tr.participants.names.length : 0;
   return {
-    id: uid(), title: '', goals: [], tags: [], pmode: p ? 'pos' : 'total', pos: p ? clone(tr.participants.pos) : zeroPos(), total: p || n || 0,
+    id: uid(), title: '', goals: [], phases: [], pmode: p ? 'pos' : 'total', pos: p ? clone(tr.participants.pos) : zeroPos(), total: p || n || 0,
     desc: { html: '', ink: { w: 600, h: 240, strokes: [] }, showInk: true, showText: false }, img: null,
     created: Date.now(), updated: Date.now(), variantOf: null
   };
 }
 function newNote() { return { html: '', ink: { w: 600, h: 160, strokes: [] }, annot: null }; }
-function newBlock() { return { id: uid(), dur: null, items: [] }; }
+function newBlock() { return { id: uid(), seq: 1, items: [] }; }
 function newTr() {
   var last = DB.kv.last || {};
   return { id: uid(), team: last.team || '', date: todayISO(), time: last.time || '', place: last.place || '', goals: [], participants: { names: [], shots: [], pos: zeroPos() }, blocks: [newBlock()], created: Date.now(), updated: Date.now() };
@@ -463,7 +483,48 @@ function addGrip(parent, pad, d, onChange, minH) {
   return g;
 }
 function hasDesc(ex) { return !!(htmlText(ex.desc.html).trim() || hasInk(ex.desc.ink)); }
-function sig(ex) { return JSON.stringify([ex.title, ex.goals, ex.tags, ex.pmode, ex.pmode === 'pos' ? ex.pos : ex.total, ex.desc.html, ex.desc.ink.strokes, ex.img]); }
+function sig(ex) { return JSON.stringify([ex.title, ex.goals, ex.phases, ex.pmode, ex.pmode === 'pos' ? ex.pos : ex.total, ex.desc.html, ex.desc.ink.strokes, ex.img]); }
+function fixPar(b) { if (b.items[0]) b.items[0].par = false; }
+function steps(b) {
+  var out = [];
+  b.items.forEach(function (it, i) { if (it.par && out.length) out[out.length - 1].items.push({ it: it, i: i }); else out.push({ lead: it, items: [{ it: it, i: i }] }); });
+  return out;
+}
+// Positionen tauschen: Struktur (parallel/Dauer) bleibt am Platz, nur die Übungen wandern
+function swapItems(b, i, j) {
+  var A = b.items[i], B = b.items[j];
+  var pa = A.par, da = A.dur; A.par = B.par; A.dur = B.dur; B.par = pa; B.dur = da;
+  b.items[i] = B; b.items[j] = A; fixPar(b);
+}
+function removeItem(b, i) {
+  var it = b.items[i], nx = b.items[i + 1];
+  if (!it.par && nx && nx.par) { nx.par = false; nx.dur = it.dur; }
+  b.items.splice(i, 1); fixPar(b);
+}
+function trSchedule(tr) {
+  var t = parseTime(tr.time), num = 0, res = { blocks: [], steps: {}, nums: {} };
+  tr.blocks.forEach(function (b) {
+    var ss = steps(b), bs = t, sum = 0, full = true;
+    if (!ss.length) {
+      var d0 = +b.dur || 0;
+      res.blocks.push({ t: t != null && d0 ? { s: t, e: t + d0 } : null, dur: d0 || null, full: true });
+      if (t != null && d0) t += d0;
+      return;
+    }
+    ss.forEach(function (s) {
+      num++;
+      s.items.forEach(function (x, k) { res.nums[x.it.iid] = s.items.length > 1 ? num + '.' + (k + 1) : '' + num; });
+      var d = +s.lead.dur || 0; sum += d; if (!d) full = false;
+      if (t == null) { res.steps[s.lead.iid] = null; return; }
+      res.steps[s.lead.iid] = { s: t, e: d ? t + d : null };
+      t = d ? t + d : null;
+    });
+    res.blocks.push({ t: bs == null ? null : { s: bs, e: t }, dur: sum || null, full: full });
+  });
+  return res;
+}
+function durLabel(B) { return B && B.dur ? (B.full ? '' : 'mind. ') + B.dur + ' Min.' : ''; }
+function stepNums(sch, s) { var a = sch.nums[s.items[0].it.iid]; return s.items.length > 1 ? a + '–' + sch.nums[s.items[s.items.length - 1].it.iid] : a; }
 function blockTimes(tr) {
   var out = [], t = parseTime(tr.time);
   tr.blocks.forEach(function (b) {
@@ -1163,6 +1224,21 @@ function descCol(col, ex, ch, editable, onTapView) {
     if (!hasT && !hasI) col.appendChild(h('div', { class: 'muted' }, '–'));
   }
 }
+function phasePicker(ex, ch) {
+  var box = h('div', { class: 'phases' });
+  function draw() {
+    box.innerHTML = '';
+    PHASES.forEach(function (p) {
+      var on = ex.phases.indexOf(p) >= 0;
+      box.appendChild(h('button', { class: 'chip ' + (on ? 'ph on' : 'off'), onclick: function () {
+        if (on) ex.phases.splice(ex.phases.indexOf(p), 1); else { ex.phases.push(p); ex.phases.sort(function (a, b) { return PHASES.indexOf(a) - PHASES.indexOf(b); }); }
+        ch(); draw();
+      } }, p));
+    });
+  }
+  draw(); return box;
+}
+function phaseChips(ex) { return ex.phases.map(function (g) { return h('span', { class: 'chip tag' }, g); }); }
 function exCard(ex, o) {
   // o: {mode:'plan'|'db', onChange, item, onRemove, onUp, onDown, posOnly}
   var card = h('div', { class: 'card ex' }), status = h('div');
@@ -1171,8 +1247,9 @@ function exCard(ex, o) {
   function refreshStatus() { clearTimeout(stT); stT = setTimeout(function () { if (o.status) o.status(status); }, 400); }
   var tIn = h('input', { type: 'text', class: 'title', value: ex.title, placeholder: 'Titel der Übung' });
   tIn.addEventListener('input', function () { ex.title = tIn.value; ch(); });
-  var head = h('div', { class: 'head' }, tIn);
+  var head = h('div', { class: 'head' }, o.num ? h('span', { class: 'num' }, o.num) : null, tIn);
   if (o.mode === 'plan') {
+    if (o.par != null) head.appendChild(h('button', { class: 'btn sm partog' + (o.par ? ' on' : ''), title: 'gleichzeitig mit der Übung davor', onclick: o.onPar }, '∥ parallel'));
     head.appendChild(h('span', { class: 'muted' }, 'Feld'));
     head.appendChild(textSuggest(o.item.field, 'fields', function (v) { o.item.field = v; if (o.onChange) o.onChange(); }, 'z. B. 1', 6));
     head.appendChild(h('button', { class: 'btn sm', title: 'nach oben', onclick: o.onUp }, '↑'));
@@ -1182,7 +1259,7 @@ function exCard(ex, o) {
   card.appendChild(head);
   var meta = h('div', { class: 'cols' },
     h('div', null, h('div', { class: 'lbl' }, 'Ziel', o.mode === 'db' ? h('span', { class: 'req' }, ' *') : null), chipInput(ex.goals, 'goals', ch, { ph: 'Ziel …', n: 8 })),
-    h('div', null, h('div', { class: 'lbl' }, 'Stichworte'), chipInput(ex.tags, 'tags', ch, { ph: 'Stichwort …', n: 8 })));
+    h('div', null, h('div', { class: 'lbl' }, 'Trainingsphase'), phasePicker(ex, ch)));
   card.appendChild(meta);
   card.appendChild(h('div', { class: 'lbl' }, 'Spieler', o.mode === 'db' ? h('span', { class: 'req' }, ' *') : null));
   if (o.posOnly) ex.pmode = 'pos';
@@ -1205,7 +1282,7 @@ function exCard(ex, o) {
 }
 
 /* ================= Ansichten ================= */
-var st = { view: 'plan', trId: null, runId: null, edit: null, editOrig: null, picker: null, q: '', fGoals: [], fMax: '' };
+var st = { view: 'plan', trId: null, runId: null, edit: null, editOrig: null, picker: null, q: '', fGoals: [], fPh: [], fMax: '' };
 function go(view, patch) {
   if (st.view === 'ex' && st.edit && view !== 'ex' && dirtyEdit()) {
     ask('Die Änderungen an der Übung sind noch nicht gespeichert. Verwerfen?', [['Zurück', 0], ['Verwerfen', 1, 'warn']]).then(function (r) { if (r) { st.edit = null; go(view, patch); } });
@@ -1308,15 +1385,13 @@ function renderPlan(w) {
   card.appendChild(posEditor(P, chTr, { posOnly: true }));
   w.appendChild(card);
   // Blöcke
-  var times = blockTimes(tr);
+  var sch = trSchedule(tr);
   tr.blocks.forEach(function (b, bi) {
-    var bl = h('div', { class: 'block' });
-    var durIn = h('input', { type: 'number', min: 0, step: 5, value: b.dur || '', placeholder: '–', style: 'width:80px', inputMode: 'numeric' });
-    durIn.addEventListener('change', function () { b.dur = durIn.value ? +durIn.value : null; chTr(); render(); });
+    var bl = h('div', { class: 'block' }), B = sch.blocks[bi];
     bl.appendChild(h('div', { class: 'bhead' },
       h('h3', null, 'Block ' + (bi + 1)),
-      times[bi] ? h('span', { class: 'time' }, timeLabel(times[bi])) : null,
-      h('span', { class: 'muted' }, 'Dauer'), durIn, h('span', { class: 'muted' }, 'Min.'),
+      B.t ? h('span', { class: 'time' }, timeLabel(B.t)) : null,
+      B.dur ? h('span', { class: 'muted' }, durLabel(B)) : null,
       h('div', { class: 'sp' }),
       h('button', { class: 'btn sm', disabled: bi === 0, onclick: function () { tr.blocks.splice(bi, 1); tr.blocks.splice(bi - 1, 0, b); chTr(); render(); } }, '↑'),
       h('button', { class: 'btn sm', disabled: bi === tr.blocks.length - 1, onclick: function () { tr.blocks.splice(bi, 1); tr.blocks.splice(bi + 1, 0, b); chTr(); render(); } }, '↓'),
@@ -1324,27 +1399,38 @@ function renderPlan(w) {
         if (b.items.length && !(await ask('Block ' + (bi + 1) + ' mit ' + b.items.length + ' Übung(en) entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']]))) return;
         tr.blocks.splice(bi, 1); chTr(); render();
       } }, 'Block entfernen')));
-    if (b.items.length > 1) bl.appendChild(h('div', { class: 'muted', style: 'margin-top:4px' }, b.items.length + ' Übungen laufen parallel'));
-    b.items.forEach(function (it, ii) { bl.appendChild(planItem(tr, b, it, ii)); });
+    steps(b).forEach(function (s) {
+      var lead = s.lead, par = s.items.length > 1, T = sch.steps[lead.iid];
+      var durIn = h('input', { type: 'number', min: 0, step: 5, value: lead.dur || '', placeholder: '–', style: 'width:72px', inputMode: 'numeric' });
+      durIn.addEventListener('change', function () { lead.dur = durIn.value ? +durIn.value : null; chTr(); render(); });
+      var box = h('div', { class: 'step' + (par ? ' par' : '') });
+      box.appendChild(h('div', { class: 'stephead' },
+        par ? h('b', { class: 'partag' }, '∥ ' + stepNums(sch, s) + ' parallel') : h('b', null, 'Übung ' + stepNums(sch, s)),
+        T ? h('span', { class: 'time' }, timeLabel(T)) : null,
+        h('span', { class: 'muted' }, 'Dauer'), durIn, h('span', { class: 'muted' }, 'Min.')));
+      s.items.forEach(function (x) { box.appendChild(planItem(tr, b, x.it, x.i, sch.nums[x.it.iid])); });
+      bl.appendChild(box);
+    });
     bl.appendChild(h('div', { class: 'row', style: 'margin-top:8px' },
       h('button', { class: 'btn', onclick: function () { var ex = newEx(tr); b.items.push({ iid: uid(), own: true, ex: ex, field: '', note: null }); chTr(); render(); } }, '+ Neue Übung'),
-      h('button', { class: 'btn', onclick: function () { st.picker = { tr: tr.id, block: b.id }; st.q = ''; st.fGoals = []; render(true); } }, '+ Aus Datenbank')));
+      h('button', { class: 'btn', onclick: function () { st.picker = { tr: tr.id, block: b.id }; st.q = ''; st.fGoals = []; st.fPh = []; render(true); } }, '+ Aus Datenbank')));
     w.appendChild(bl);
   });
   w.appendChild(h('button', { class: 'btn', style: 'margin:6px 0 20px', onclick: function () { tr.blocks.push(newBlock()); chTr(); render(); } }, '+ Übungsblock'));
 }
 var ownTimers = {};
-function planItem(tr, b, it, ii) {
+function planItem(tr, b, it, ii, num) {
   var ex = it.ex;
   var onChange = function () {
     markTr(tr);
     if (it.own && ex.goals.length) { clearTimeout(ownTimers[ex.id]); ownTimers[ex.id] = setTimeout(function () { var c = clone(ex); DB.ex.set(c.id, c); markEx(c); }, 600); }
   };
   return exCard(ex, {
-    mode: 'plan', item: it, onChange: onChange,
-    onUp: function () { if (ii > 0) { b.items.splice(ii, 1); b.items.splice(ii - 1, 0, it); markTr(tr); render(); } },
-    onDown: function () { if (ii < b.items.length - 1) { b.items.splice(ii, 1); b.items.splice(ii + 1, 0, it); markTr(tr); render(); } },
-    onRemove: async function () { if (await ask('Übung aus diesem Training entfernen? (In der Datenbank bleibt sie.)', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { b.items.splice(ii, 1); markTr(tr); render(); } },
+    mode: 'plan', item: it, onChange: onChange, num: num, par: ii > 0 ? !!it.par : null,
+    onPar: function () { it.par = !it.par; if (!it.par && !it.dur) it.dur = null; markTr(tr); render(); },
+    onUp: function () { if (ii > 0) { swapItems(b, ii, ii - 1); markTr(tr); render(); } },
+    onDown: function () { if (ii < b.items.length - 1) { swapItems(b, ii, ii + 1); markTr(tr); render(); } },
+    onRemove: async function () { if (await ask('Übung aus diesem Training entfernen? (In der Datenbank bleibt sie.)', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { removeItem(b, ii); markTr(tr); render(); } },
     status: function (el) {
       el.className = 'status'; el.innerHTML = '';
       var miss = !hasDesc(ex) ? ' Beschreibung fehlt (Pflichtfeld).' : '';
@@ -1378,11 +1464,17 @@ function planItem(tr, b, it, ii) {
 
 /* ----- Auswahl aus der Datenbank ----- */
 function exFilterBar(w, onChange, tr) {
-  var q = h('input', { type: 'search', value: st.q, placeholder: 'Suchen (Titel, Ziel, Stichwort, Text) …', style: 'flex:1;min-width:200px' });
+  var q = h('input', { type: 'search', value: st.q, placeholder: 'Suchen (Titel, Ziel, Text) …', style: 'flex:1;min-width:200px' });
   q.addEventListener('input', function () { st.q = q.value; onChange(); });
   var max = h('input', { type: 'number', min: 0, value: st.fMax, placeholder: '–', style: 'width:80px', inputMode: 'numeric' });
   max.addEventListener('input', function () { st.fMax = max.value; onChange(); });
   w.appendChild(h('div', { class: 'row', style: 'margin-top:10px' }, q, h('span', { class: 'muted' }, 'max. Spieler'), max));
+  var phc = {}; DB.ex.forEach(function (e) { e.phases.forEach(function (p) { phc[p] = (phc[p] || 0) + 1; }); });
+  var pl = PHASES.filter(function (p) { return phc[p]; });
+  if (pl.length) w.appendChild(h('div', { style: 'margin-top:6px' }, h('span', { class: 'muted', style: 'margin-right:4px' }, 'Phase:'), pl.map(function (p) {
+    var on = st.fPh.indexOf(p) >= 0;
+    return h('button', { class: 'chip ' + (on ? 'ph on' : 'off'), onclick: function () { if (on) st.fPh.splice(st.fPh.indexOf(p), 1); else st.fPh.push(p); onChange(true); } }, p + ' (' + phc[p] + ')');
+  })));
   var goals = {}; DB.ex.forEach(function (e) { e.goals.forEach(function (g) { goals[g] = (goals[g] || 0) + 1; }); });
   var gl = Object.keys(goals).sort(function (a, b) { return goals[b] - goals[a]; });
   if (gl.length) w.appendChild(h('div', { style: 'margin-top:6px' }, gl.map(function (g) {
@@ -1393,9 +1485,10 @@ function exFilterBar(w, onChange, tr) {
 function exFiltered() {
   var q = st.q.trim().toLowerCase(), mx = st.fMax ? +st.fMax : 0;
   return Array.from(DB.ex.values()).filter(function (e) {
+    if (st.fPh.length && !st.fPh.some(function (p) { return e.phases.indexOf(p) >= 0; })) return false;
     if (st.fGoals.length && !st.fGoals.every(function (g) { return e.goals.indexOf(g) >= 0; })) return false;
     if (mx && players(e) > mx) return false;
-    if (q) { var hay = [e.title, e.goals.join(' '), e.tags.join(' '), htmlText(e.desc.html)].join(' ').toLowerCase(); if (hay.indexOf(q) < 0) return false; }
+    if (q) { var hay = [e.title, e.goals.join(' '), e.phases.join(' '), htmlText(e.desc.html)].join(' ').toLowerCase(); if (hay.indexOf(q) < 0) return false; }
     return true;
   }).sort(function (a, b) { return b.updated - a.updated; });
 }
@@ -1405,7 +1498,7 @@ function exRow(e, onClick) {
     h('div', { class: 'info' },
       h('b', null, exLabel(e), e.variantOf ? h('span', { class: 'muted' }, ' (Variante)') : null),
       h('div', { class: 'muted', style: 'margin:3px 0' }, players(e) + ' Spieler' + (e.pmode === 'pos' && posSum(e.pos) ? ' (' + posText(e.pos) + ')' : '')),
-      h('div', null, e.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), e.tags.map(function (g) { return h('span', { class: 'chip tag' }, g); })),
+      h('div', null, e.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), phaseChips(e)),
       htmlText(e.desc.html).trim() ? h('div', { class: 'muted', style: 'margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, htmlText(e.desc.html).trim().split('\n')[0]) : null));
   if (e.img) new Pad(th, e.img.ink, { bg: e.img.bg, img: e.img.src });
   else if (hasInk(e.desc.ink)) new Pad(th, { w: 600, h: Math.min(e.desc.ink.h, 360), strokes: e.desc.ink.strokes }, { bg: lineBg() });
@@ -1518,22 +1611,31 @@ function renderRun(w) {
       return box;
     })) : null);
   w.appendChild(head);
-  var times = blockTimes(tr);
+  var sch = trSchedule(tr);
   tr.blocks.forEach(function (b, bi) {
-    var bl = h('div', { class: 'block' }, h('div', { class: 'bhead' }, h('h3', null, 'Block ' + (bi + 1)), times[bi] ? h('span', { class: 'time' }, timeLabel(times[bi])) : null,
-      b.dur ? h('span', { class: 'muted' }, b.dur + ' Min.') : null, b.items.length > 1 ? h('span', { class: 'muted' }, '· ' + b.items.length + ' Übungen parallel') : null));
+    var B = sch.blocks[bi];
+    var bl = h('div', { class: 'block' }, h('div', { class: 'bhead' }, h('h3', null, 'Block ' + (bi + 1)), B.t ? h('span', { class: 'time' }, timeLabel(B.t)) : null,
+      B.dur ? h('span', { class: 'muted' }, durLabel(B)) : null));
     if (!b.items.length) bl.appendChild(h('div', { class: 'muted', style: 'margin-top:6px' }, 'Keine Übung'));
-    b.items.forEach(function (it) { bl.appendChild(runItem(tr, it)); });
+    steps(b).forEach(function (s) {
+      var par = s.items.length > 1, T = sch.steps[s.lead.iid], d = +s.lead.dur;
+      var box = h('div', { class: 'step' + (par ? ' par' : '') });
+      if (par || T || d) box.appendChild(h('div', { class: 'stephead' },
+        par ? h('b', { class: 'partag' }, '∥ ' + stepNums(sch, s) + ' parallel') : h('b', null, 'Übung ' + stepNums(sch, s)),
+        T ? h('span', { class: 'time' }, timeLabel(T)) : null, d ? h('span', { class: 'muted' }, d + ' Min.') : null));
+      s.items.forEach(function (x) { box.appendChild(runItem(tr, x.it, sch.nums[x.it.iid])); });
+      bl.appendChild(box);
+    });
     w.appendChild(bl);
   });
 }
-function runItem(tr, it) {
+function runItem(tr, it, num) {
   var ex = it.ex, card = h('div', { class: 'card' });
   var pl = players(ex);
-  card.appendChild(h('div', { class: 'row' }, h('b', { style: 'font-size:18px;flex:1;min-width:160px' }, exLabel(ex)),
+  card.appendChild(h('div', { class: 'row' }, num ? h('span', { class: 'num' }, num) : null, h('b', { style: 'font-size:18px;flex:1;min-width:160px' }, exLabel(ex)),
     it.field ? h('span', { class: 'field' }, 'Feld ' + it.field) : null,
     pl ? h('span', { class: 'muted' }, pl + ' Spieler' + (ex.pmode === 'pos' && posSum(ex.pos) ? ' (' + posText(ex.pos) + ')' : '')) : null));
-  if (ex.goals.length || ex.tags.length) card.appendChild(h('div', { style: 'margin-top:4px' }, ex.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), ex.tags.map(function (g) { return h('span', { class: 'chip tag' }, g); })));
+  if (ex.goals.length || ex.phases.length) card.appendChild(h('div', { style: 'margin-top:4px' }, phaseChips(ex), ex.goals.map(function (g) { return h('span', { class: 'chip' }, g); })));
   var ci = h('div', { class: 'ci' }), cd = h('div', { class: 'cd' });
   if (ex.img) card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, ci, cd)); else card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, cd, h('div', { class: 'ci runempty' })));
   var annotate = function () {
@@ -1807,18 +1909,26 @@ async function makeTrainingPdf(tr, opt) {
   if (meta) wrapped(meta, 11, 'normal', [80, 80, 80]);
   if (P.names.length) wrapped(P.names.join(', '), 10, 'normal', [80, 80, 80]);
   y += 3;
-  var times = blockTimes(tr);
+  var sch = trSchedule(tr);
   tr.blocks.forEach(function (b, bi) {
+    var B = sch.blocks[bi];
     need(16);
     doc.setFillColor(232, 238, 251); doc.roundedRect(M, y, CW, 8, 1.5, 1.5, 'F');
-    var bt = 'Block ' + (bi + 1) + (times[bi] ? '   ' + timeLabel(times[bi]) : '') + (b.dur ? '   (' + b.dur + ' Min.)' : '') + (b.items.length > 1 ? '   ' + b.items.length + ' Übungen parallel' : '');
+    var bt = 'Block ' + (bi + 1) + (B.t ? '   ' + timeLabel(B.t) : '') + (B.dur ? '   (' + durLabel(B) + ')' : '');
     txt(bt, M + 3, y + 5.6, 11.5, 'bold', [29, 63, 143]); y += 11;
     if (!b.items.length) { wrapped('Keine Übung', 10, 'italic', [120, 120, 120]); y += 2; }
+    var stepOf = {}; steps(b).forEach(function (s) { s.items.forEach(function (x) { stepOf[x.i] = s; }); });
     b.items.forEach(function (it, ii) {
-      var ex = it.ex;
+      var ex = it.ex, S = stepOf[ii], par = S.items.length > 1, first = S.lead === it;
+      if (first) {
+        var T = sch.steps[it.iid], d = +it.dur;
+        var sl = (par ? stepNums(sch, S) + ' parallel' : 'Übung ' + stepNums(sch, S)) + (T ? '   ' + timeLabel(T) : '') + (d ? '   (' + d + ' Min.)' : '');
+        if (par || T || d) { need(14); txt(sl, M, y + 4, 10, 'bold', par ? [47, 90, 190] : [90, 90, 90]); y += 6; }
+      }
+      var py0 = doc.internal.getNumberOfPages(), y0s = y;
       // Kopfzeile der Übung
       var right = [it.field ? 'Feld ' + it.field : '', players(ex) ? players(ex) + ' Spieler' + (ex.pmode === 'pos' && posSum(ex.pos) ? ' (' + posText(ex.pos) + ')' : '') : ''].filter(Boolean).join('   ');
-      var tagsLine = ex.goals.concat(ex.tags.map(function (t) { return '#' + t; })).join(', ');
+      var tagsLine = (ex.phases.length ? '[' + ex.phases.join(', ') + ']  ' : '') + ex.goals.join(', ');
       var headH = 7 + (tagsLine ? 5 : 0);
       // Inhalte vorbereiten
       var im = ex.img ? exImage(ex.img) : null;
@@ -1830,7 +1940,7 @@ async function makeTrainingPdf(tr, opt) {
       var fits = headH + bodyH <= BOT - M;
       need(headH + (fits ? bodyH : Math.min(bodyH, 40)));
       doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5);
-      var title = doc.splitTextToSize(pdfSafe(exLabel(ex)), right ? CW * 0.6 : CW)[0];
+      var title = doc.splitTextToSize(pdfSafe(sch.nums[it.iid] + '   ' + exLabel(ex)), right ? CW * 0.6 : CW)[0];
       txt(title, M, y + 5, 12.5, 'bold');
       if (right) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(90, 90, 90); doc.text(pdfSafe(right), M + CW, y + 5, { align: 'right' }); }
       y += 7;
@@ -1858,6 +1968,7 @@ async function makeTrainingPdf(tr, opt) {
         if (hasInk(nt.ink)) flowImg(inkImage(nt.ink), CW * 0.8);
       }
       y += 2;
+      if (par && doc.internal.getNumberOfPages() === py0) { doc.setDrawColor(125, 155, 224); doc.setLineWidth(1.2); doc.line(M - 4, y0s, M - 4, y - 1); }
       if (ii < b.items.length - 1) { need(4); doc.setDrawColor(215, 215, 210); doc.setLineWidth(0.2); doc.line(M, y, M + CW, y); y += 4; }
     });
     y += 3;
@@ -2135,7 +2246,7 @@ async function convertJoin() {
   deliverDialog('Dateien zusammenführen', fs.length + ' Dateien werden zu einer Gesamtdatei: ' + m.ex.length + ' Übungen, ' + m.tr.length + ' Trainings. Bei doppelten Einträgen gilt der neuere Stand. Die Daten in der App bleiben unverändert.',
     function () { return [fileOf(dataPart(m, 'all'))]; }, null);
 }
-var LEX_KINDS = [['teams', 'Teams'], ['goals', 'Ziele'], ['tags', 'Stichworte'], ['names', 'Namen'], ['places', 'Orte'], ['fields', 'Felder']];
+var LEX_KINDS = [['teams', 'Teams'], ['goals', 'Ziele'], ['names', 'Namen'], ['places', 'Orte'], ['fields', 'Felder']];
 function lexUses(kind, w) {
   var n = 0, lw = w.toLowerCase();
   var inArr = function (a) { return (a || []).some(function (x) { return x.toLowerCase() === lw; }); };
@@ -2266,11 +2377,13 @@ function openHelp() {
     '<li><b>Mac:</b> Safari → Ablage → „Zum Dock hinzufügen“, oder Lesezeichen.</li>' +
     '<li>Die App läuft danach offline. Neue Version: App mit Internet öffnen → grüne Leiste antippen.</li></ul>' +
     '<h3>Planen</h3><ul><li>„+ Neues Training“: Datum, Beginn, Ort, Teilnehmer (Namen oder Screenshots, z. B. aus Spond), optional Positionen. Screenshots per „Foto/Datei“ oder „📋 Screenshot einfügen“ (Zwischenablage). Man kann direkt mit dem Stift darauf schreiben; Größe am blauen Punkt ziehen; ⤢ Vollbild; × entfernt.</li>' +
-    '<li>Ein <b>Block</b> hat eine Dauer; daraus werden die Uhrzeiten berechnet. In einem Block können mehrere Übungen parallel laufen (Feld angeben).</li>' +
+    '<li>Die Übungen eines <b>Blocks</b> laufen nacheinander und sind durchnummeriert (1, 2, 3 …). Jede Übung bekommt eine Dauer; daraus werden die Uhrzeiten und die Dauer des Blocks berechnet.</li>' +
+    '<li><b>∥ parallel</b> an einer Übung: Sie läuft gleichzeitig mit der Übung davor. Parallele Übungen bekommen einen blauen Rahmen und Unternummern (3.1, 3.2 …); die Dauer gilt für die ganze Gruppe. Am besten das Feld angeben.</li>' +
+    '<li><b>Trainingsphase</b> (optional): Aufwärmen, Einspielen, Grundtechnik, Taktik, Komplex oder Spiel. In der Übungsliste lässt sich danach filtern.</li>' +
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
     '<li>Oben im Training: optional das <b>Team</b> (wird gelernt, Auswahl über ▾) und die <b>Ziele des Trainings</b>.</li>' +
-    '<li>Ziele, Stichworte, Namen, Orte und Felder lernt die App. Vorschläge öffnen sich über den kleinen Pfeil <b>▾</b> als Liste; beim Tippen erscheinen passende Einträge. Vertippte oder überholte Einträge: <b>☰ → Vorschläge verwalten</b> (umbenennen – auf Wunsch überall – oder aus der Liste löschen).</li>' +
+    '<li>Ziele, Namen, Orte und Felder lernt die App. Vorschläge öffnen sich über den kleinen Pfeil <b>▾</b> als Liste; beim Tippen erscheinen passende Einträge. Vertippte oder überholte Einträge: <b>☰ → Vorschläge verwalten</b> (umbenennen – auf Wunsch überall – oder aus der Liste löschen).</li>' +
     '<li><b>Beschreibung:</b> Eine leere Übung zeigt eine Schreibfläche für den Stift. Mit „+ ⌨ Text“ bzw. „+ ✎ Handschrift“ kommt das andere Feld dazu. Felder, die leer bleiben, verschwinden beim nächsten Öffnen wieder.</li>' +
     '<li><b>Text formatieren:</b> Leiste über dem Textfeld (fett, kursiv, unterstrichen, Aufzählung, nummerierte Liste, Einzug für Unterpunkte). „- “ oder „1. “ am Zeilenanfang startet automatisch eine Liste.</li>' +
     '<li><b>Aufteilung:</b> Beim Planen steht der Text links, das Bild rechts. Die graue Leiste dazwischen ziehen, um die Breite zu ändern. Die graue Leiste unter der Handschriftfläche ziehen, um die Höhe zu ändern. Liniert oder blanko: ☰ → Einstellungen.</li>' +
