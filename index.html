@@ -206,7 +206,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.17';
+var VERSION = '0.9.18';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -282,7 +282,13 @@ function normEx(ex) {
   if (!ex.phases) { ex.phases = []; (ex.tags || []).forEach(function (t) { var m = PHASES.find(function (x) { return x.toLowerCase() === String(t).trim().toLowerCase(); }); if (m && ex.phases.indexOf(m) < 0) ex.phases.push(m); }); }
   ex.phases.sort(function (a, b) { return PHASES.indexOf(a) - PHASES.indexOf(b); });
   if (ex.desc && ex.desc.html == null) { ex.desc.html = textToHtml(ex.desc.text); delete ex.desc.text; }
-  if (ex.img && !ex.img.wpct) ex.img.wpct = 50;
+  if (!ex.imgs) { // bis 0.9.17: ein Bild in ex.img
+    ex.imgs = [];
+    if (ex.img) { var m0 = ex.img; ex.iw = m0.wpct || 50; delete m0.wpct; ex.imgs.push(m0); }
+  }
+  delete ex.img;
+  ex.imgs.forEach(function (m, i) { if (!m.id) m.id = 'i' + i; delete m.wpct; });
+  if (!ex.iw) ex.iw = 50;
   return ex;
 }
 function shotObj(x) { return typeof x === 'string' ? { src: x, w: 600, h: 0, strokes: [] } : x; }
@@ -301,6 +307,11 @@ function normTr(tr) {
   });
   tr.blocks.forEach(function (b) { b.items.forEach(function (it) {
     normEx(it.ex);
+    if (it.note) {
+      if (!it.note.annots) it.note.annots = {};
+      if (it.note.annot) { if (it.note.annot.strokes && it.note.annot.strokes.length && it.ex.imgs[0]) it.note.annots[it.ex.imgs[0].id] = it.note.annot; }
+      delete it.note.annot;
+    }
     if (it.note && it.note.html == null) { it.note.html = textToHtml(it.note.text); delete it.note.text; }
   }); });
   return tr;
@@ -448,11 +459,11 @@ function newEx(tr) {
   var p = tr ? posSum(tr.participants.pos) : 0, n = tr ? tr.participants.names.length : 0;
   return {
     id: uid(), title: '', goals: [], phases: [], pmode: p ? 'pos' : 'total', pos: p ? clone(tr.participants.pos) : zeroPos(), total: p || n || 0,
-    desc: { html: '', ink: { w: 600, h: 240, strokes: [] }, showInk: true, showText: false }, img: null,
+    desc: { html: '', ink: { w: 600, h: 240, strokes: [] }, showInk: true, showText: false }, imgs: [], iw: 50,
     created: Date.now(), updated: Date.now(), variantOf: null
   };
 }
-function newNote() { return { html: '', ink: { w: 600, h: 160, strokes: [] }, annot: null }; }
+function newNote() { return { html: '', ink: { w: 600, h: 160, strokes: [] }, annots: {} }; }
 function newBlock() { return { id: uid(), seq: 1, items: [] }; }
 function newTr() {
   var last = DB.kv.last || {};
@@ -484,7 +495,7 @@ function addGrip(parent, pad, d, onChange, minH) {
   return g;
 }
 function hasDesc(ex) { return !!(htmlText(ex.desc.html).trim() || hasInk(ex.desc.ink)); }
-function sig(ex) { return JSON.stringify([ex.title, ex.goals, ex.phases, ex.pmode, ex.pmode === 'pos' ? ex.pos : ex.total, ex.desc.html, ex.desc.ink.strokes, ex.img]); }
+function sig(ex) { return JSON.stringify([ex.title, ex.goals, ex.phases, ex.pmode, ex.pmode === 'pos' ? ex.pos : ex.total, ex.desc.html, ex.desc.ink.strokes, ex.imgs, ex.iw]); }
 function fixPar(b) { if (b.items[0]) b.items[0].par = false; }
 function steps(b) {
   var out = [];
@@ -1141,7 +1152,48 @@ function shotThumb(sh, onTap, onDel) {
 function openImage(src) { var im = imgFor(src); var go = function () { openZoom({ w: 600, h: Math.round(600 * im.naturalHeight / im.naturalWidth) || 400, strokes: [] }, 'none', src); }; if (im.complete) go(); else im._cbs.push(go); }
 
 /* ---------- Übungskarte ---------- */
-function applyW(col, ex) { col.style.flexBasis = ex.img ? (ex.img.wpct || 50) + '%' : ''; var sp = col.parentNode && col.parentNode.querySelector && col.parentNode.querySelector(':scope > .split'); if (sp) sp.style.visibility = ex.img ? 'visible' : 'hidden'; }
+function hasImg(ex) { return !!(ex.imgs && ex.imgs.length); }
+function applyW(col, ex) { col.style.flexBasis = hasImg(ex) ? (ex.iw || 50) + '%' : ''; var sp = col.parentNode && col.parentNode.querySelector && col.parentNode.querySelector(':scope > .split'); if (sp) sp.style.visibility = hasImg(ex) ? 'visible' : 'hidden'; }
+function loadImg(src) { var im = imgFor(src); return !im || im.complete ? Promise.resolve(im) : new Promise(function (r) { im._cbs.push(function () { r(im); }); }); }
+function annotOf(note, img) { var a = note && note.annots && note.annots[img.id]; return a && a.strokes && a.strokes.length ? a : null; }
+// Bild um 90° im Uhrzeigersinn drehen; Striche (und Anmerkungen in extra) werden mitgedreht
+async function rotateImg(img, extra) {
+  var W = img.ink.w, H = img.ink.h, k = W / H, c = null, x;
+  if (img.src && img.bg === 'none') {
+    var im = await loadImg(img.src), nw = im.naturalWidth, nh = im.naturalHeight;
+    c = document.createElement('canvas'); c.width = nh; c.height = nw; x = c.getContext('2d');
+    x.translate(nh, 0); x.rotate(Math.PI / 2); x.drawImage(im, 0, 0);
+  } else if (img.src || img.bg === 'court' || img.bg === 'half') {
+    if (img.src) await loadImg(img.src);
+    var base = renderImageCanvas({ bg: img.bg, src: img.src, ink: { w: W, h: H, strokes: [] } }, null, 1600);
+    c = document.createElement('canvas'); c.width = base.height; c.height = base.width; x = c.getContext('2d');
+    x.translate(base.height, 0); x.rotate(Math.PI / 2); x.drawImage(base, 0, 0);
+  }
+  var tf = function (d) {
+    d.strokes.forEach(function (st2) { var q = st2.p; for (var i = 0; i < q.length; i += 3) { var xx = q[i], yy = q[i + 1]; q[i] = (H - yy) * k; q[i + 1] = xx * k; } if (st2.w) st2.w *= k; });
+    d.w = W; d.h = W * k;
+  };
+  tf(img.ink); (extra || []).forEach(tf);
+  UNDO = UNDO.filter(function (e) { return e.d !== img.ink; }); REDO = REDO.filter(function (e) { return e.d !== img.ink; }); updUndo();
+  if (c) { img.src = c.toDataURL('image/jpeg', 0.9); img.bg = 'none'; }
+}
+function newImgRow(onAdd) {
+  var fromImg = function (r) { onAdd({ bg: 'none', src: r.src, ink: { w: 600, h: Math.round(600 * r.h / r.w), strokes: [] } }); };
+  return h('div', { class: 'row' },
+    h('button', { class: 'btn sm', onclick: function () { onAdd({ bg: 'court', src: null, ink: { w: 600, h: 330, strokes: [] } }); } }, '▭ Spielfeld'),
+    h('button', { class: 'btn sm', onclick: function () { onAdd({ bg: 'half', src: null, ink: { w: 600, h: 420, strokes: [] } }); } }, '◫ Halbfeld'),
+    h('button', { class: 'btn sm', onclick: function () { onAdd({ bg: 'none', src: null, ink: { w: 600, h: 360, strokes: [] } }); } }, '✎ Leer'),
+    h('button', { class: 'btn sm', onclick: async function () {
+      pasteTarget = { t: Date.now(), cb: fromImg };
+      try { var b = await clipboardImage(); pasteTarget = null; fromImg(await blobToImg(b)); }
+      catch (e) { toast(navigator.clipboard && navigator.clipboard.read ? 'Kein Bild in der Zwischenablage. Im Coaching Board erst „Kopieren“.' : 'Jetzt ⌘V / Strg+V drücken, oder „Foto/Datei“ nutzen.', 4000); }
+    } }, '📋 Einfügen'),
+    h('button', { class: 'btn sm', onclick: async function () {
+      var f = await pickFile('image/*', true); if (!f.length) return;
+      for (var i = 0; i < f.length; i++) { try { fromImg(await blobToImg(f[i])); } catch (e) { toast('Bild konnte nicht gelesen werden'); } }
+    } }, '🖼 Foto/Datei'),
+    coachLink());
+}
 function renderImageCanvas(img, extra, maxW) {
   var d = img.ink, im = img.src ? imgFor(img.src) : null;
   var tw = im && im.naturalWidth ? Math.max(1000, Math.min(maxW || 2400, im.naturalWidth)) : Math.min(maxW || 1400, 1400), sc = tw / d.w;
@@ -1167,42 +1219,44 @@ function copyImage(img, extra) {
     navigator.clipboard.write([new ClipboardItem({ 'image/png': pr })]).then(function () { toast('Bild kopiert – jetzt woanders einfügen'); }, fallback);
   } catch (e) { fallback(); }
 }
-function imgCol(col, ex, ch, editable, onTapView) {
+function imgCol(col, ex, ch, editable, onTapView, item) {
   col.innerHTML = ''; applyW(col, ex);
-  if (editable) col.appendChild(h('div', { class: 'lbl' }, 'Bild'));
-  if (!ex.img) {
+  var redraw = function () { imgCol(col, ex, ch, editable, onTapView, item); layoutAll(); updToolbar(); };
+  var add = function (img) { img.id = uid(); ex.imgs.push(img); col._add = false; ch(); redraw(); };
+  if (editable) col.appendChild(h('div', { class: 'lbl' }, ex.imgs.length > 1 ? 'Bilder' : 'Bild'));
+  if (!hasImg(ex)) {
     if (!editable) { col.appendChild(h('div', { class: 'muted' }, '–')); return; }
-    var set = function (img) { ex.img = img; ch(); imgCol(col, ex, ch, editable); layoutAll(); updToolbar(); };
-    var fromImg = function (r) { set({ bg: 'none', src: r.src, ink: { w: 600, h: Math.round(600 * r.h / r.w), strokes: [] } }); };
-    col.appendChild(h('div', { class: 'row' },
-      h('button', { class: 'btn sm', onclick: function () { set({ bg: 'court', src: null, ink: { w: 600, h: 330, strokes: [] } }); } }, '▭ Spielfeld'),
-      h('button', { class: 'btn sm', onclick: function () { set({ bg: 'half', src: null, ink: { w: 600, h: 420, strokes: [] } }); } }, '◫ Halbfeld'),
-      h('button', { class: 'btn sm', onclick: function () { set({ bg: 'none', src: null, ink: { w: 600, h: 360, strokes: [] } }); } }, '✎ Leer'),
-      h('button', { class: 'btn sm', onclick: async function () {
-        pasteTarget = { t: Date.now(), cb: fromImg };
-        try { var b = await clipboardImage(); pasteTarget = null; fromImg(await blobToImg(b)); }
-        catch (e) { toast(navigator.clipboard && navigator.clipboard.read ? 'Kein Bild in der Zwischenablage. Im Coaching Board erst „Kopieren“.' : 'Jetzt ⌘V / Strg+V drücken, oder „Foto/Datei“ nutzen.', 4000); }
-      } }, '📋 Einfügen'),
-      h('button', { class: 'btn sm', onclick: async function () {
-        var f = await pickFile('image/*'); if (!f.length) return;
-        try { fromImg(await blobToImg(f[0])); } catch (e) { toast('Bild konnte nicht gelesen werden'); }
-      } }, '🖼 Foto/Datei'),
-      coachLink()));
+    col.appendChild(newImgRow(add));
     col.appendChild(h('div', { class: 'note' }, 'Aufstellung: „🏐 Coaching Board“ öffnet das Board. Dort „Kopieren“, zurück und hier „📋 Einfügen“ – oder dort „Export“ und hier „Foto/Datei“.'));
     return;
   }
-  applyW(col, ex);
-  var wrapP = h('div', { class: 'imgwrap' }), ph = h('div'); wrapP.appendChild(ph); col.appendChild(wrapP);
-  new Pad(ph, ex.img.ink, { bg: ex.img.bg, img: ex.img.src, editable: editable, onChange: ch, onTap: editable ? null : onTapView });
-  if (editable) col.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
-    h('button', { class: 'btn sm', onclick: function () { copyImage(ex.img); } }, '⧉ Kopieren'),
-    coachLink(),
-    ex.img.ink.strokes.length ? h('button', { class: 'btn sm', onclick: async function () {
-      if (await ask('Alle Striche auf dem Bild löschen?', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { pushUndo(ex.img.ink, ex.img.ink.strokes.slice(), ch); ex.img.ink.strokes = []; ch(); imgCol(col, ex, ch, editable); layoutAll(); }
-    } }, 'Striche löschen') : null,
-    h('button', { class: 'btn sm warn', onclick: async function () {
-      if (await ask('Bild entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { ex.img = null; ch(); imgCol(col, ex, ch, editable); updToolbar(); }
-    } }, 'Bild entfernen')));
+  var n = ex.imgs.length;
+  ex.imgs.forEach(function (img, i) {
+    var wrapP = h('div', { class: 'imgwrap', style: i ? 'margin-top:12px' : '' }), ph = h('div'); wrapP.appendChild(ph); col.appendChild(wrapP);
+    new Pad(ph, img.ink, { bg: img.bg, img: img.src, editable: editable, onChange: ch, onTap: editable ? null : function () { onTapView(img); } });
+    if (!editable) return;
+    var move = function (j) { ex.imgs.splice(i, 1); ex.imgs.splice(j, 0, img); ch(); redraw(); };
+    col.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
+      h('button', { class: 'btn sm', title: 'um 90° drehen', onclick: async function (e) {
+        var bt = e.currentTarget; bt.disabled = true;
+        var extra = []; var a = item && item.note && item.note.annots && item.note.annots[img.id]; if (a) extra.push(a);
+        try { await rotateImg(img, extra); ch(); } catch (err) { toast('Drehen nicht möglich'); }
+        redraw();
+      } }, '⟳ Drehen'),
+      h('button', { class: 'btn sm', onclick: function () { copyImage(img); } }, '⧉ Kopieren'),
+      n > 1 ? h('button', { class: 'btn sm', disabled: i === 0, title: 'nach oben', onclick: function () { move(i - 1); } }, '↑') : null,
+      n > 1 ? h('button', { class: 'btn sm', disabled: i === n - 1, title: 'nach unten', onclick: function () { move(i + 1); } }, '↓') : null,
+      img.ink.strokes.length ? h('button', { class: 'btn sm', onclick: async function () {
+        if (await ask('Alle Striche auf diesem Bild löschen?', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { pushUndo(img.ink, img.ink.strokes.slice(), ch); img.ink.strokes = []; ch(); redraw(); }
+      } }, 'Striche löschen') : null,
+      h('button', { class: 'btn sm warn', onclick: async function () {
+        if (await ask('Bild entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']])) { ex.imgs.splice(i, 1); ch(); redraw(); }
+      } }, 'Entfernen')));
+  });
+  if (editable) {
+    if (col._add) { col.appendChild(h('div', { class: 'lbl', style: 'margin-top:12px' }, 'Weiteres Bild')); col.appendChild(newImgRow(add)); col.appendChild(h('button', { class: 'btn sm', style: 'margin-top:6px', onclick: function () { col._add = false; redraw(); } }, 'Abbrechen')); }
+    else col.appendChild(h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'btn sm', onclick: function () { col._add = true; redraw(); } }, '+ Weiteres Bild'), coachLink()));
+  }
 }
 function descCol(col, ex, ch, editable, onTapView) {
   // Leere Felder bleiben nur sichtbar, solange man sie gerade benutzt (bis zum nächsten Neuaufbau der Ansicht)
@@ -1211,7 +1265,7 @@ function descCol(col, ex, ch, editable, onTapView) {
   var hasT = !!htmlText(d.html).trim(), hasI = hasInk(d.ink);
   if (editable) col.appendChild(h('div', { class: 'lbl' }, 'Beschreibung', h('span', { class: 'req' }, ' *')));
   if (editable) {
-    var showT = hasT || col._t, showI = hasI || col._i || (!hasT && !col._t);
+    var showT = hasT || col._t, showI = hasI || col._i || (!hasT && !col._t && !d.hideInk);
     if (showT) {
       var rt = richEditor(d.html, function (v) { d.html = v; ch(); }, 'Beschreibung eintippen … („- “ oder „1. “ am Zeilenanfang startet eine Liste)');
       col.appendChild(rt);
@@ -1222,11 +1276,20 @@ function descCol(col, ex, ch, editable, onTapView) {
       var pad = new Pad(ph, d.ink, { bg: lineBg(), editable: true, grow: true, onChange: ch });
       addGrip(col, pad, d.ink, ch, 140);
     }
-    var add = function (which) { if (showI) col._i = true; if (showT) col._t = true; if (which === 't') { col._t = true; col._focus = true; } else col._i = true; descCol(col, ex, ch, editable); layoutAll(); updToolbar(); };
+    var redo = function () { descCol(col, ex, ch, editable); layoutAll(); updToolbar(); };
+    var add = function (which) { if (showI) col._i = true; if (showT) col._t = true; if (which === 't') { col._t = true; col._focus = true; } else { col._i = true; d.hideInk = false; } redo(); };
+    var del = async function (which) {
+      var used = which === 't' ? !!htmlText(d.html).trim() : hasInk(d.ink); hasT = which === 't' && used; hasI = which === 'i' && used;
+      if (used && !(await ask(which === 't' ? 'Textfeld mit Inhalt entfernen?' : 'Handschriftfeld mit allen Strichen entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']]))) return;
+      if (which === 't') { col._t = false; if (hasT) { d.html = ''; ch(); } }
+      else { col._i = false; d.hideInk = true; if (hasI) { UNDO = UNDO.filter(function (e) { return e.d !== d.ink; }); REDO = REDO.filter(function (e) { return e.d !== d.ink; }); d.ink.strokes = []; ch(); } }
+      redo();
+    };
     col.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
       !showT ? h('button', { class: 'btn sm', onclick: function () { add('t'); } }, '+ ⌨ Text') : null,
       !showI ? h('button', { class: 'btn sm', onclick: function () { add('i'); } }, '+ ✎ Handschrift') : null,
-      null));
+      showT ? h('button', { class: 'btn sm', onclick: function () { del('t'); } }, '✕ Textfeld') : null,
+      showI ? h('button', { class: 'btn sm', onclick: function () { del('i'); } }, '✕ Handschriftfeld') : null));
   } else {
     if (hasT) col.appendChild(h('div', { class: 'runtxt rtx', onclick: onTapView, html: sanitize(d.html) }));
     if (hasI) { var ph2 = h('div'); col.appendChild(ph2); new Pad(ph2, d.ink, { bg: lineBg(), onTap: onTapView }); }
@@ -1277,14 +1340,14 @@ function exCard(ex, o) {
   var cols = h('div', { class: 'cols ed', style: 'margin-top:4px' }, cd, sp, ci);
   card.appendChild(cols);
   sp.addEventListener('pointerdown', function (e) {
-    if (!ex.img) return;
+    if (!hasImg(ex)) return;
     e.preventDefault(); try { sp.setPointerCapture(e.pointerId); } catch (_) {}
     var r0 = cols.getBoundingClientRect();
-    var mv = function (ev) { ex.img.wpct = Math.max(20, Math.min(80, Math.round((r0.right - ev.clientX) / r0.width * 100))); applyW(ci, ex); };
+    var mv = function (ev) { ex.iw = Math.max(20, Math.min(80, Math.round((r0.right - ev.clientX) / r0.width * 100))); applyW(ci, ex); };
     var up = function () { sp.removeEventListener('pointermove', mv); sp.removeEventListener('pointerup', up); sp.removeEventListener('pointercancel', up); ch(); };
     sp.addEventListener('pointermove', mv); sp.addEventListener('pointerup', up); sp.addEventListener('pointercancel', up);
   });
-  imgCol(ci, ex, ch, true); descCol(cd, ex, ch, true);
+  imgCol(ci, ex, ch, true, null, o.item); descCol(cd, ex, ch, true);
   card.appendChild(status);
   if (o.status) o.status(status);
   return card;
@@ -1521,7 +1584,7 @@ function exRow(e, onClick) {
       h('div', { class: 'muted', style: 'margin:3px 0' }, players(e) + ' Spieler' + (e.pmode === 'pos' && posSum(e.pos) ? ' (' + posText(e.pos) + ')' : '')),
       h('div', null, e.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), phaseChips(e)),
       htmlText(e.desc.html).trim() ? h('div', { class: 'muted', style: 'margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, htmlText(e.desc.html).trim().split('\n')[0]) : null));
-  if (e.img) new Pad(th, e.img.ink, { bg: e.img.bg, img: e.img.src });
+  if (hasImg(e)) new Pad(th, e.imgs[0].ink, { bg: e.imgs[0].bg, img: e.imgs[0].src });
   else if (hasInk(e.desc.ink)) new Pad(th, { w: 600, h: Math.min(e.desc.ink.h, 360), strokes: e.desc.ink.strokes }, { bg: lineBg() });
   else th.style.width = '0';
   return row;
@@ -1658,50 +1721,62 @@ function runItem(tr, it, num) {
     pl ? h('span', { class: 'muted' }, pl + ' Spieler' + (ex.pmode === 'pos' && posSum(ex.pos) ? ' (' + posText(ex.pos) + ')' : '')) : null));
   if (ex.goals.length || ex.phases.length) card.appendChild(h('div', { style: 'margin-top:4px' }, phaseChips(ex), ex.goals.map(function (g) { return h('span', { class: 'chip' }, g); })));
   var ci = h('div', { class: 'ci' }), cd = h('div', { class: 'cd' });
-  if (ex.img) card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, ci, cd)); else card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, cd, h('div', { class: 'ci runempty' })));
-  var annotate = function () {
-    var a = it.note && it.note.annot;
-    openZoom(ex.img.ink, ex.img.bg, ex.img.src, {
-      annot: { w: ex.img.ink.w, h: ex.img.ink.h, strokes: a ? clone(a.strokes) : [] },
+  if (hasImg(ex)) card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, ci, cd)); else card.appendChild(h('div', { class: 'cols', style: 'margin-top:4px' }, cd, h('div', { class: 'ci runempty' })));
+  var annotate = function (img) {
+    var a = annotOf(it.note, img);
+    openZoom(img.ink, img.bg, img.src, {
+      annot: { w: img.ink.w, h: img.ink.h, strokes: a ? clone(a.strokes) : [] },
       onSave: function (an) {
         if (!it.note) it.note = newNote();
-        it.note.annot = { w: an.w, h: an.h, strokes: an.strokes };
+        if (!it.note.annots) it.note.annots = {};
+        it.note.annots[img.id] = { w: an.w, h: an.h, strokes: an.strokes };
         markTr(tr); drawNote(); layoutAll(); updToolbar(); toast('Anmerkungen als Notiz gespeichert');
       }
     });
   };
-  if (ex.img) imgCol(ci, ex, null, false, annotate);
+  if (hasImg(ex)) imgCol(ci, ex, null, false, annotate);
   descCol(cd, ex, null, false, function () { openText(ex); });
   var nb = h('div'); card.appendChild(nb);
   function drawNote() {
     nb.innerHTML = '';
     var n = it.note;
-    var hasT = !!(n && htmlText(n.html).trim()), hasI = !!(n && hasInk(n.ink)), an = n && n.annot, hasA = !!(an && an.strokes.length && ex.img);
+    var anImgs = ex.imgs.filter(function (m) { return annotOf(n, m); });
+    var hasT = !!(n && htmlText(n.html).trim()), hasI = !!(n && hasInk(n.ink)), hasA = anImgs.length > 0;
     var showT = hasT || nb._t, showI = hasI || nb._i;
     var add = function (which) { if (!it.note) { it.note = newNote(); markTr(tr); } if (which === 't') nb._t = nb._focus = true; else nb._i = true; drawNote(); layoutAll(); updToolbar(); };
     if (hasA || showT || showI) nb.appendChild(h('div', { class: 'row', style: 'justify-content:space-between;margin-top:6px' },
       h('div', { class: 'lbl', style: 'margin:0' }, 'Notiz'),
       h('button', { class: 'btn sm warn', onclick: async function () {
-        if (!(await ask('Notiz zu „' + exLabel(ex) + '“ löschen? Text, Handschrift und Anmerkungen auf dem Bild werden entfernt.', [['Abbrechen', 0], ['Löschen', 1, 'warn']]))) return;
+        if (!(await ask('Notiz zu „' + exLabel(ex) + '“ löschen? Text, Handschrift und Anmerkungen auf den Bildern werden entfernt.', [['Abbrechen', 0], ['Löschen', 1, 'warn']]))) return;
         var old = it.note; it.note = null; nb._t = nb._i = nb._focus = false;
         if (old) { UNDO = UNDO.filter(function (e) { return e.d !== old.ink; }); REDO = REDO.filter(function (e) { return e.d !== old.ink; }); updUndo(); }
         markTr(tr); drawNote(); layoutAll(); updToolbar(); toast('Notiz gelöscht');
       } }, '🗑 Notiz löschen')));
-    if (an && an.strokes.length && ex.img) {
-      var aw = h('div', { style: 'max-width:420px;margin-bottom:8px' }); nb.appendChild(h('div', { class: 'muted', style: 'margin-bottom:4px' }, 'Anmerkungen auf dem Bild')); nb.appendChild(aw);
-      new Pad(aw, { w: an.w, h: an.h, strokes: ex.img.ink.strokes.concat(an.strokes) }, { bg: ex.img.bg, img: ex.img.src, onTap: annotate });
+    anImgs.forEach(function (img) {
+      var an = annotOf(n, img);
+      var aw = h('div', { style: 'max-width:420px;margin-bottom:8px' }); nb.appendChild(h('div', { class: 'muted', style: 'margin-bottom:4px' }, 'Anmerkungen auf dem Bild' + (ex.imgs.length > 1 ? ' ' + (ex.imgs.indexOf(img) + 1) : ''))); nb.appendChild(aw);
+      new Pad(aw, { w: an.w, h: an.h, strokes: img.ink.strokes.concat(an.strokes) }, { bg: img.bg, img: img.src, onTap: function () { annotate(img); } });
       nb.appendChild(h('div', { class: 'row', style: 'margin-bottom:8px' },
-        h('button', { class: 'btn sm', onclick: function () { copyImage(ex.img, an.strokes); } }, '⧉ Kopieren'),
-        h('button', { class: 'btn sm warn', onclick: async function () { if (await ask('Anmerkungen auf dem Bild löschen?', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { it.note.annot = null; markTr(tr); drawNote(); layoutAll(); } } }, 'Anmerkungen löschen')));
-    }
+        h('button', { class: 'btn sm', onclick: function () { copyImage(img, an.strokes); } }, '⧉ Kopieren'),
+        h('button', { class: 'btn sm warn', onclick: async function () { if (await ask('Anmerkungen auf diesem Bild löschen?', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { delete it.note.annots[img.id]; markTr(tr); drawNote(); layoutAll(); } } }, 'Anmerkungen löschen')));
+    });
     if (showT) {
       var rt = richEditor(it.note.html, function (v) { it.note.html = v; markTr(tr); }, 'Notiz eintippen …', 50); nb.appendChild(rt);
       if (nb._focus) { nb._focus = false; setTimeout(function () { var e = rt.querySelector('.rte'); if (e) e.focus(); }, 0); }
     }
     if (showI) { var ph = h('div', { style: 'margin-top:6px' }); nb.appendChild(ph); new Pad(ph, it.note.ink, { bg: lineBg(), editable: true, grow: true, onChange: function () { markTr(tr); } }); addGrip(nb, ph._pad, it.note.ink, function () { markTr(tr); }, 120); }
-    if (!showT || !showI) nb.appendChild(h('div', { class: 'row', style: 'margin-top:8px' },
+    var delN = async function (which) {
+      var used = which === 't' ? !!htmlText(it.note.html).trim() : hasInk(it.note.ink); hasT = which === 't' && used; hasI = which === 'i' && used;
+      if (used && !(await ask(which === 't' ? 'Getippte Notiz entfernen?' : 'Handschriftliche Notiz entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']]))) return;
+      if (which === 't') { nb._t = false; if (hasT) { it.note.html = ''; markTr(tr); } }
+      else { nb._i = false; if (hasI) { var nk = it.note.ink; UNDO = UNDO.filter(function (e) { return e.d !== nk; }); REDO = REDO.filter(function (e) { return e.d !== nk; }); nk.strokes = []; markTr(tr); } }
+      drawNote(); layoutAll(); updToolbar();
+    };
+    nb.appendChild(h('div', { class: 'row', style: 'margin-top:8px' },
       !showT ? h('button', { class: 'btn sm', onclick: function () { add('t'); } }, '+ ⌨ Notiz') : null,
-      !showI ? h('button', { class: 'btn sm', onclick: function () { add('i'); } }, '+ ✎ Notiz') : null));
+      !showI ? h('button', { class: 'btn sm', onclick: function () { add('i'); } }, '+ ✎ Notiz') : null,
+      showT ? h('button', { class: 'btn sm', onclick: function () { delN('t'); } }, '✕ Textfeld') : null,
+      showI ? h('button', { class: 'btn sm', onclick: function () { delN('i'); } }, '✕ Handschriftfeld') : null));
   }
   drawNote();
   return card;
@@ -1907,6 +1982,8 @@ function exImage(img, extra) { var c = renderImageCanvas(img, extra, 1600); retu
 
 async function makeTrainingPdf(tr, opt) {
   var jsPDF = await loadJsPDF();
+  var pre = []; tr.blocks.forEach(function (b) { b.items.forEach(function (it) { it.ex.imgs.forEach(function (m) { if (m.src) pre.push(loadImg(m.src)); }); }); });
+  await Promise.all(pre);
   var doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
   var PW = 210, PH = 297, M = 14, CW = PW - 2 * M, BOT = PH - M - 6, y = M;
   function need(hh) { if (y + hh > BOT) { doc.addPage(); y = M; return true; } return false; }
@@ -1952,12 +2029,12 @@ async function makeTrainingPdf(tr, opt) {
       var tagsLine = (ex.phases.length ? '[' + ex.phases.join(', ') + ']  ' : '') + ex.goals.join(', ');
       var headH = 7 + (tagsLine ? 5 : 0);
       // Inhalte vorbereiten
-      var im = ex.img ? exImage(ex.img) : null;
-      var imgW = im ? CW * Math.max(0.3, Math.min(0.7, (ex.img.wpct || 50) / 100)) : 0, gap = im ? 5 : 0, TW = CW - imgW - gap;
+      var ims = ex.imgs.map(function (m) { return exImage(m); }), im = ims.length ? ims[0] : null;
+      var imgW = im ? CW * Math.max(0.3, Math.min(0.7, (ex.iw || 50) / 100)) : 0, gap = im ? 5 : 0, TW = CW - imgW - gap;
       var L = htmlText(ex.desc.html).trim() ? layoutRich(doc, richBlocks(ex.desc.html), TW, 10.5) : null;
       var ink = hasInk(ex.desc.ink) ? inkImage(ex.desc.ink) : null;
       var textH = (L ? L.lines.length * L.lh : 0) + (ink ? TW * ink.ar + (L ? 2 : 0) : 0);
-      var imgH = im ? imgW * im.ar : 0, bodyH = Math.max(textH, imgH);
+      var imgH = ims.reduce(function (a, m, i) { return a + imgW * m.ar + (i ? 3 : 0); }, 0), bodyH = Math.max(textH, imgH);
       var fits = headH + bodyH <= BOT - M;
       need(headH + (fits ? bodyH : Math.min(bodyH, 40)));
       doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5);
@@ -1969,22 +2046,24 @@ async function makeTrainingPdf(tr, opt) {
       y += 1;
       if (fits) {
         var y0 = y;
-        if (im) { doc.addImage(im.src, 'JPEG', M, y0, imgW, imgH); doc.setDrawColor(210, 210, 205); doc.setLineWidth(0.2); doc.rect(M, y0, imgW, imgH); }
+        var iy = y0;
+        ims.forEach(function (m) { var mh = imgW * m.ar; doc.addImage(m.src, 'JPEG', M, iy, imgW, mh); doc.setDrawColor(210, 210, 205); doc.setLineWidth(0.2); doc.rect(M, iy, imgW, mh); iy += mh + 3; });
         var tx = M + imgW + gap, yy = y0;
         if (L) L.lines.forEach(function (ln) { drawRichLine(doc, L, ln, tx, yy + L.lh * 0.78); yy += L.lh; });
         if (ink) { if (L) yy += 2; doc.addImage(ink.src, 'JPEG', tx, yy, TW, TW * ink.ar); }
         y = y0 + bodyH + 2;
       } else {
-        if (im) flowImg(im, CW * 0.8);
+        ims.forEach(function (m) { flowImg(m, CW * 0.8); });
         if (L) { var L2 = layoutRich(doc, richBlocks(ex.desc.html), CW, 10.5); flowRich(L2, M, CW); y += 2; }
         if (ink) flowImg(ink, CW);
       }
       if (!L && !ink) { wrapped('(keine Beschreibung)', 9.5, 'italic', [140, 140, 140]); }
       // Notizen
       var nt = it.note;
-      if (opt.notes && nt && (htmlText(nt.html).trim() || hasInk(nt.ink) || (nt.annot && nt.annot.strokes.length && ex.img))) {
+      var anI = ex.imgs.filter(function (m) { return annotOf(nt, m); });
+      if (opt.notes && nt && (htmlText(nt.html).trim() || hasInk(nt.ink) || anI.length)) {
         need(8); txt('Notiz', M, y + 4, 9.5, 'bold', [154, 90, 0]); y += 6;
-        if (nt.annot && nt.annot.strokes.length && ex.img) flowImg(exImage(ex.img, nt.annot.strokes), CW * 0.55);
+        anI.forEach(function (m) { flowImg(exImage(m, annotOf(nt, m).strokes), CW * 0.55); });
         if (htmlText(nt.html).trim()) { flowRich(layoutRich(doc, richBlocks(nt.html), CW, 10), M, CW); y += 1; }
         if (hasInk(nt.ink)) flowImg(inkImage(nt.ink), CW * 0.8);
       }
@@ -2016,7 +2095,7 @@ async function makeTrainingPdf(tr, opt) {
 }
 function pdfStart(tr) {
   flush();
-  var hasNotes = tr.blocks.some(function (b) { return b.items.some(function (it) { var n = it.note; return n && (htmlText(n.html).trim() || hasInk(n.ink) || (n.annot && n.annot.strokes.length)); }); });
+  var hasNotes = tr.blocks.some(function (b) { return b.items.some(function (it) { var n = it.note; return n && (htmlText(n.html).trim() || hasInk(n.ink) || Object.keys(n.annots || {}).some(function (k) { return n.annots[k].strokes && n.annots[k].strokes.length; })); }); });
   var o = { notes: hasNotes, shots: false };
   var ov = h('div', { class: 'modal' }), msg = h('div', { class: 'note', style: 'min-height:18px;margin-top:8px' });
   var cb = function (key, label, dis) {
@@ -2493,9 +2572,10 @@ function openHelp() {
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
     '<li>Oben im Training: optional das <b>Team</b> (wird gelernt, Auswahl über ▾) und die <b>Ziele des Trainings</b>.</li>' +
     '<li>Ziele, Namen, Orte und Felder lernt die App. Vorschläge öffnen sich über den kleinen Pfeil <b>▾</b> als Liste; beim Tippen erscheinen passende Einträge. Vertippte oder überholte Einträge: <b>☰ → Vorschläge verwalten</b> (umbenennen – auf Wunsch überall – oder aus der Liste löschen).</li>' +
-    '<li><b>Beschreibung:</b> Eine leere Übung zeigt eine Schreibfläche für den Stift. Mit „+ ⌨ Text“ bzw. „+ ✎ Handschrift“ kommt das andere Feld dazu. Felder, die leer bleiben, verschwinden beim nächsten Öffnen wieder.</li>' +
+    '<li><b>Beschreibung:</b> Eine leere Übung zeigt eine Schreibfläche für den Stift. Mit „+ ⌨ Text“ bzw. „+ ✎ Handschrift“ kommt das andere Feld dazu. Nicht gebrauchte Felder entfernt man mit „✕ Textfeld“ bzw. „✕ Handschriftfeld“ (gilt auch für Notizen); Felder, die leer bleiben, verschwinden außerdem beim nächsten Öffnen.</li>' +
     '<li><b>Text formatieren:</b> Leiste über dem Textfeld (fett, kursiv, unterstrichen, Aufzählung, nummerierte Liste, Einzug für Unterpunkte). „- “ oder „1. “ am Zeilenanfang startet automatisch eine Liste.</li>' +
     '<li><b>Aufteilung:</b> Beim Planen steht der Text links, das Bild rechts. Die graue Leiste dazwischen ziehen, um die Breite zu ändern. Die graue Leiste unter der Handschriftfläche ziehen, um die Höhe zu ändern. Liniert oder blanko: ☰ → Einstellungen.</li>' +
+    '<li><b>Mehrere Bilder:</b> „+ Weiteres Bild“ unter dem ersten Bild. Unter jedem Bild: <b>⟳ Drehen</b> (um 90°, Striche drehen mit), ↑/↓ Reihenfolge, Entfernen. Bei „Foto/Datei“ kann man auch mehrere Bilder auf einmal wählen.</li>' +
     '<li><b>Bild kopieren:</b> „⧉ Kopieren“ unter dem Bild (mit allen Strichen), z. B. um es in eine andere App einzufügen.</li></ul>' +
     '<h3>Schreiben mit dem Stift</h3><ul><li>Nur der Stift schreibt; Finger und Handballen scrollen nicht, solange geschrieben wird.</li>' +
     '<li>Werkzeuge oben: drei Stifte, Textmarker, Radierer; dahinter die Schalter <b>／ gerade Linie</b>, <b>┄ gestrichelt</b> und <b>➜ Pfeil am Ende</b> (für die Stifte, einzeln oder kombiniert, wie beim Coaching Board). <b>Aktives Werkzeug nochmals antippen</b> → Farbe und Stärke (Radierer: ganzer Strich oder nur Bereich).</li>' +
