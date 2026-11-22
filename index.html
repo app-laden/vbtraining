@@ -37,6 +37,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 #main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 calc(10px + env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left))}
 .wrap{max-width:1150px;margin:0 auto}
 .card{background:#fff;border:1px solid #e1e1db;border-radius:14px;padding:12px 14px;margin:12px 0}
+.card.orga{border-left:5px solid #e0a100}
 .block{background:#f8f8f5;border:1px solid #d9d9d2;border-radius:16px;padding:10px 12px;margin:16px 0}
 .step{margin-top:10px}
 .step.par{border:2px solid #7d9be0;border-radius:14px;padding:4px 8px 8px;background:#eef3fd}
@@ -206,7 +207,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.18';
+var VERSION = '0.9.19';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -1390,7 +1391,7 @@ function renderPlan(w) {
     list.forEach(function (t) {
       w.appendChild(h('div', { class: 'trow', onclick: function () { go('plan', { trId: t.id }); } },
         h('div', { class: 't' }, h('b', null, trTitle(t)), h('span', { class: 'muted' }, ((t.goals || []).length ? t.goals.join(', ') + ' · ' : '') + t.blocks.length + ' Blöcke · ' + trCount(t) + ' Übungen' + (t.participants.names.length ? ' · ' + t.participants.names.length + ' Teilnehmer' : ''))),
-        h('button', { class: 'btn sm', onclick: function (e) { e.stopPropagation(); var c = clone(t); c.id = uid(); c.date = todayISO(); c.participants = { names: [], shots: [], pos: zeroPos() }; c.blocks.forEach(function (b) { b.id = uid(); b.items.forEach(function (it) { it.iid = uid(); it.note = null; }); }); DB.tr.set(c.id, c); markTr(c); go('plan', { trId: c.id }); toast('Training kopiert'); } }, 'Kopieren'),
+        h('button', { class: 'btn sm', onclick: function (e) { e.stopPropagation(); var c = clone(t); c.id = uid(); c.date = todayISO(); c.participants = { names: [], shots: [], pos: zeroPos() }; c.orga = null; c.blocks.forEach(function (b) { b.id = uid(); b.items.forEach(function (it) { it.iid = uid(); it.note = null; }); }); DB.tr.set(c.id, c); markTr(c); go('plan', { trId: c.id }); toast('Training kopiert'); } }, 'Kopieren'),
         h('button', { class: 'btn sm warn', onclick: async function (e) { e.stopPropagation(); if (await ask('Training „' + trTitle(t) + '“ löschen? Die Übungen bleiben in der Datenbank.', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { delTr(t.id); render(); } } }, 'Löschen')));
     });
     return;
@@ -1455,6 +1456,7 @@ function renderPlan(w) {
   drawShots(); card.appendChild(shots);
   card.appendChild(h('div', { class: 'lbl' }, 'Positionen (optional)'));
   card.appendChild(posEditor(P, chTr, { posOnly: true }));
+  var orgBox = h('div'); card.appendChild(orgBox); orgaSection(orgBox, tr, chTr);
   w.appendChild(card);
   // Blöcke
   var sch = trSchedule(tr);
@@ -1501,6 +1503,41 @@ function blockDurIn(b) {
   var i = h('input', { type: 'number', min: 0, step: 5, value: b.dur || '', placeholder: 'Dauer', style: 'width:80px', inputMode: 'numeric' });
   i.addEventListener('change', function () { b.dur = i.value ? +i.value : null; var t = DB.tr.get(st.trId); if (t) markTr(t); render(); });
   return i;
+}
+/* ----- Organisatorisches vor dem Training (optional) ----- */
+function orgaHas(o) { return !!(o && (htmlText(o.html).trim() || hasInk(o.ink))); }
+function orgaSection(box, tr, ch) {
+  box.innerHTML = '';
+  var redo = function () { orgaSection(box, tr, ch); layoutAll(); updToolbar(); };
+  var o = tr.orga;
+  if (!o) {
+    box.appendChild(h('button', { class: 'btn sm', style: 'margin-top:12px', onclick: function () { tr.orga = { html: '', ink: { w: 600, h: 200, strokes: [] }, t: false, i: false }; ch(); redo(); } }, '+ Organisatorisches / Vorab'));
+    return;
+  }
+  var hasT = !!htmlText(o.html).trim(), hasI = hasInk(o.ink), showT = hasT || o.t, showI = hasI || o.i;
+  box.appendChild(h('div', { class: 'lbl', style: 'margin-top:14px' }, 'Organisatorisches / Vorab'));
+  if (showT) {
+    var rt = richEditor(o.html, function (v) { o.html = v; ch(); }, 'Organisatorisches eintippen …', 50); box.appendChild(rt);
+    if (box._focus) { box._focus = false; setTimeout(function () { var e = rt.querySelector('.rte'); if (e) e.focus(); }, 0); }
+  }
+  if (showI) { var ph = h('div', { style: 'margin-top:6px' }); box.appendChild(ph); var pad = new Pad(ph, o.ink, { bg: lineBg(), editable: true, grow: true, onChange: ch }); addGrip(box, pad, o.ink, ch, 120); }
+  var del = async function (which) {
+    var used = which === 't' ? !!htmlText(o.html).trim() : hasInk(o.ink);
+    if (used && !(await ask(which === 't' ? 'Textfeld mit Inhalt entfernen?' : 'Handschriftfeld mit allen Strichen entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']]))) return;
+    if (which === 't') { o.t = false; o.html = ''; }
+    else { o.i = false; UNDO = UNDO.filter(function (e) { return e.d !== o.ink; }); REDO = REDO.filter(function (e) { return e.d !== o.ink; }); o.ink.strokes = []; }
+    ch(); redo();
+  };
+  box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
+    !showT ? h('button', { class: 'btn sm', onclick: function () { o.t = true; box._focus = true; ch(); redo(); } }, '+ ⌨ Text') : null,
+    !showI ? h('button', { class: 'btn sm', onclick: function () { o.i = true; ch(); redo(); } }, '+ ✎ Handschrift') : null,
+    showT ? h('button', { class: 'btn sm', onclick: function () { del('t'); } }, '✕ Textfeld') : null,
+    showI ? h('button', { class: 'btn sm', onclick: function () { del('i'); } }, '✕ Handschriftfeld') : null,
+    h('button', { class: 'btn sm warn', onclick: async function () {
+      if (orgaHas(o) && !(await ask('Bereich „Organisatorisches“ mit Inhalt entfernen?', [['Abbrechen', 0], ['Entfernen', 1, 'warn']]))) return;
+      UNDO = UNDO.filter(function (e) { return e.d !== o.ink; }); REDO = REDO.filter(function (e) { return e.d !== o.ink; }); updUndo();
+      tr.orga = null; ch(); redo();
+    } }, 'Bereich entfernen')));
 }
 var ownTimers = {};
 function planItem(tr, b, it, ii, num) {
@@ -1695,6 +1732,13 @@ function renderRun(w) {
       return box;
     })) : null);
   w.appendChild(head);
+  if (orgaHas(tr.orga)) {
+    var O = tr.orga, oex = { title: 'Organisatorisches / Vorab', goals: [], desc: { html: O.html, ink: O.ink } };
+    var oc = h('div', { class: 'card orga' }, h('b', { style: 'font-size:17px' }, 'Organisatorisches / Vorab'));
+    if (htmlText(O.html).trim()) oc.appendChild(h('div', { class: 'runtxt rtx', style: 'margin-top:6px', onclick: function () { openText(oex); }, html: sanitize(O.html) }));
+    if (hasInk(O.ink)) { var oph = h('div', { style: 'margin-top:6px;max-width:720px' }); oc.appendChild(oph); new Pad(oph, O.ink, { bg: lineBg(), onTap: function () { openText(oex); } }); }
+    w.appendChild(oc);
+  }
   var sch = trSchedule(tr);
   tr.blocks.forEach(function (b, bi) {
     var B = sch.blocks[bi];
@@ -2006,6 +2050,11 @@ async function makeTrainingPdf(tr, opt) {
   if ((tr.goals || []).length) wrapped('Ziele: ' + tr.goals.join(', '), 12, 'bold', [29, 63, 143]);
   if (meta) wrapped(meta, 11, 'normal', [80, 80, 80]);
   if (P.names.length) wrapped(P.names.join(', '), 10, 'normal', [80, 80, 80]);
+  if (orgaHas(tr.orga)) {
+    var O = tr.orga; y += 2; need(10); txt('Organisatorisches / Vorab', M, y + 4.5, 11.5, 'bold', [154, 90, 0]); y += 7;
+    if (htmlText(O.html).trim()) { flowRich(layoutRich(doc, richBlocks(O.html), CW, 10.5), M, CW); y += 1; }
+    if (hasInk(O.ink)) flowImg(inkImage(O.ink), CW * 0.8);
+  }
   y += 3;
   var sch = trSchedule(tr);
   tr.blocks.forEach(function (b, bi) {
@@ -2570,6 +2619,7 @@ function openHelp() {
     '<li><b>Trainingsphase</b> (optional): Aufwärmen, Einspielen, Grundtechnik, Taktik, Komplex oder Spiel. In der Übungsliste lässt sich danach filtern.</li>' +
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
+    '<li><b>Organisatorisches / Vorab</b> (unter den Positionen, optional): Knopf aufklappen, dann Textfeld und/oder Handschriftfeld anlegen – für Punkte, die vor dem Training angesprochen werden. Erscheint beim Durchführen oben und im PDF; beim Kopieren eines Trainings wird es nicht übernommen.</li>' +
     '<li>Oben im Training: optional das <b>Team</b> (wird gelernt, Auswahl über ▾) und die <b>Ziele des Trainings</b>.</li>' +
     '<li>Ziele, Namen, Orte und Felder lernt die App. Vorschläge öffnen sich über den kleinen Pfeil <b>▾</b> als Liste; beim Tippen erscheinen passende Einträge. Vertippte oder überholte Einträge: <b>☰ → Vorschläge verwalten</b> (umbenennen – auf Wunsch überall – oder aus der Liste löschen).</li>' +
     '<li><b>Beschreibung:</b> Eine leere Übung zeigt eine Schreibfläche für den Stift. Mit „+ ⌨ Text“ bzw. „+ ✎ Handschrift“ kommt das andere Feld dazu. Nicht gebrauchte Felder entfernt man mit „✕ Textfeld“ bzw. „✕ Handschriftfeld“ (gilt auch für Notizen); Felder, die leer bleiben, verschwinden außerdem beim nächsten Öffnen.</li>' +
