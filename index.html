@@ -213,7 +213,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.21';
+var VERSION = '0.9.22';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -230,7 +230,7 @@ var DEF_SET = {
   slots: [{ c: '#1a1a1a', w: 1.6 }, { c: '#1f4fd1', w: 1.6 }, { c: '#d02a2a', w: 2.6 }],
   hl: { c: '#fff176', w: 18 }, er: { mode: 'stroke', r: 12 },
   pressure: true, sens: 0.7, finger: false, fs: 26, lines: true, saveMode: 'one', coachUrl: 'https://app-laden.github.io/vbcoachingboard/',
-  cloud: 'none', cloudKeys: { dropbox: '', onedrive: '', google: '' }, cloudMode: 'auto', cloudSplit: false, cloudDbEx: 'VB Training', cloudDbTr: 'VB Training Trainings', cloudNotify: true, fileRemind: true
+  cloud: 'none', cloudKeys: { dropbox: '', onedrive: '', google: '' }, cloudMode: 'auto', cloudSplit: false, cloudDbEx: 'VB Training', cloudDbTr: 'VB Training Trainings', cloudNotify: true, fileRemind: null
 };
 
 /* ================= DOM-Helfer ================= */
@@ -2239,23 +2239,35 @@ function pdfDialog(blob, name) {
 }
 
 /* ================= Menü: Sichern, Laden, Einstellungen, Hilfe ================= */
-function updMenuDot() {
-  var stale = function (t) { return !t || Date.now() - t > 3 * 864e5; };
-  var due = S.fileRemind !== false && ((DB.kv.dirtyEx && stale(DB.kv.backupEx) && DB.ex.size) || (DB.kv.dirtyTr && stale(DB.kv.backupTr) && DB.tr.size));
-  if (typeof cloudOn === 'function' && S.cloud && S.cloud !== 'none' && (!cloudOn() || CS.status === 'auth' || CS.status === 'err')) due = true;
-  $('#menuBtn').classList.toggle('dot', !!due);
+// Gründe für den orangen Punkt am ☰
+function fileRemindOn() { return S.fileRemind == null ? !(typeof cloudOn === 'function' && cloudOn()) : !!S.fileRemind; }
+function menuWarnings() {
+  var w = [], stale = function (t) { return !t || Date.now() - t > 3 * 864e5; };
+  if (typeof cloudOn === 'function' && S.cloud && S.cloud !== 'none') {
+    var n = CLOUD_NAMES[S.cloud];
+    if (!cloudOn()) w.push(n + ' ist ausgewählt, aber auf diesem Gerät nicht verbunden.');
+    else if (CS.status === 'auth') w.push(n + ': Anmeldung abgelaufen – bitte neu anmelden.');
+    else if (CS.status === 'err') w.push(n + ': Abgleich fehlgeschlagen (' + CS.err + ').');
+  }
+  if (fileRemindOn() && ((DB.kv.dirtyEx && stale(DB.kv.backupEx) && DB.ex.size) || (DB.kv.dirtyTr && stale(DB.kv.backupTr) && DB.tr.size)))
+    w.push('Änderungen seit über 3 Tagen nicht als Datei gesichert (☰ → Sichern; Erinnerung abschaltbar in den Einstellungen).');
+  return w;
 }
+function updMenuDot() { $('#menuBtn').classList.toggle('dot', menuWarnings().length > 0); }
 function ago(t) { if (!t) return 'noch nie'; var d = Math.floor((Date.now() - t) / 864e5); return d <= 0 ? 'heute' : d === 1 ? 'gestern' : 'vor ' + d + ' Tagen'; }
 $('#menuBtn').onclick = function () {
   if (curPop && curPop.dataset.for === 'menu') { closePops(); return; }
   openPop($('#menuBtn'), 'menu', function (p) {
     p.classList.add('menu');
+    menuWarnings().forEach(function (t) { p.appendChild(h('div', { class: 'note', style: 'padding:6px 8px 2px;color:#b35f00' }, '● ' + t)); });
     if (S.cloud && S.cloud !== 'none') {
-      p.appendChild(h('div', { class: 'note', style: 'padding:6px 8px 2px' }, '☁︎ ' + cloudLine()));
-      if (cloudOn() && CS.status !== 'auth') p.appendChild(h('button', { onclick: function () { closePops(); cloudSync(true); } }, '⇅ Jetzt abgleichen'));
-      var nLoc = cloudOn() ? Object.keys(cloudLocal()).filter(function (id) { return DB.ex.has(id) || DB.tr.has(id); }).length : 0;
-      if (nLoc) p.appendChild(h('button', { onclick: async function () { closePops(); await cloudOffer('', true); cloudSync(true); } }, '☁︎ In die Cloud übernehmen … (' + nLoc + ' nur hier)'));
-      else p.appendChild(h('button', { onclick: function () { closePops(); cloudConnect(S.cloud); } }, '⚠ Bei ' + CLOUD_NAMES[S.cloud] + ' anmelden'));
+      var cn = CLOUD_NAMES[S.cloud];
+      if (cloudOn() && CS.status !== 'auth') {
+        p.appendChild(h('div', { class: 'note', style: 'padding:6px 8px 2px' }, '☁︎ Mit ' + cn + ' verbunden · ' + cloudShort()));
+        p.appendChild(h('button', { onclick: function () { closePops(); cloudSync(true); } }, '⇅ Jetzt abgleichen'));
+        var nLoc = Object.keys(cloudLocal()).filter(function (id) { return DB.ex.has(id) || DB.tr.has(id); }).length;
+        if (nLoc) p.appendChild(h('button', { onclick: async function () { closePops(); await cloudOffer('', true); cloudSync(true); } }, '☁︎ In die Cloud übernehmen … (' + nLoc + ' nur auf diesem Gerät)'));
+      } else p.appendChild(h('button', { onclick: function () { closePops(); cloudConnect(S.cloud); } }, '⚠ Bei ' + cn + ' anmelden'));
     }
     p.appendChild(h('button', { onclick: function () { closePops(); exportAll(); } }, '💾 Sichern (Datei)'));
     p.appendChild(h('button', { onclick: function () { closePops(); importAll(); } }, '📂 Laden (Datei)'));
@@ -2654,18 +2666,19 @@ function cloudSettings(box, draw) {
   box.appendChild(h('div', { class: 'lbl' }, 'Abgleich'));
   box.appendChild(segCtl([['auto', 'Automatisch (live)'], ['manual', 'Nur auf Knopfdruck']], S.cloudMode === 'manual' ? 'manual' : 'auto', function (v) { S.cloudMode = v; saveS(); updCloudUi(); draw(); if (v === 'auto' && cloudOn()) cloudSync(); }));
   box.appendChild(h('div', { class: 'note' }, S.cloudMode === 'manual' ? 'Abgleich nur über ☁︎ oben oder ☰ → „Jetzt abgleichen“.' : 'Änderungen gehen nach wenigen Sekunden in die Cloud; Änderungen anderer Geräte erscheinen beim Öffnen und alle 15 Sekunden.'));
-  box.appendChild(h('div', { class: 'lbl' }, 'Datenbank in der Cloud'));
-  box.appendChild(segCtl([[false, 'Eine für alles'], [true, 'Übungen und Trainings getrennt']], !!S.cloudSplit, async function (v) { S.cloudSplit = v; saveS(); if (cloudOn()) { DB.kv.cloudLocal = {}; markKv('cloudLocal'); box.closest('.modal').remove(); await cloudOffer('Aufteilung der Cloud-Datenbank geändert. '); cloudSync(true); } else draw(); }));
-  var dbEx = h('input', { type: 'text', value: S.cloudDbEx || 'VB Training', style: 'flex:1;min-width:160px' });
-  var dbTr = h('input', { type: 'text', value: S.cloudDbTr || 'VB Training Trainings', style: 'flex:1;min-width:160px' });
-  var chName = async function () { S.cloudDbEx = dbEx.value.trim() || 'VB Training'; S.cloudDbTr = dbTr.value.trim() || 'VB Training Trainings'; saveS(); if (cloudOn()) { DB.kv.cloudLocal = {}; markKv('cloudLocal'); box.closest('.modal').remove(); await cloudOffer('Andere Cloud-Datenbank gewählt. '); cloudSync(true); } };
-  dbEx.addEventListener('change', chName); dbTr.addEventListener('change', chName);
-  box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' }, h('span', { class: 'muted' }, S.cloudSplit ? 'Übungen' : 'Name'), dbEx));
-  if (S.cloudSplit) box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' }, h('span', { class: 'muted' }, 'Trainings'), dbTr));
-  box.appendChild(h('div', { class: 'note' }, 'Alle Geräte mit gleichen Namen arbeiten mit denselben Daten. Ein neuer Name legt eine neue Datenbank an; die Daten dieses Geräts werden dorthin übernommen.'));
+  box.appendChild(h('div', { class: 'lbl' }, 'Aufbau der Cloud-Datenbank'));
+  box.appendChild(h('div', { class: 'status', style: 'margin-top:4px' }, S.cloudSplit ? 'Übungen und Trainings in getrennten Datenbanken' : 'Eine Datenbank für Übungen und Trainings'));
+  box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
+    h('button', { class: 'btn sm', onclick: async function () {
+      var v = !S.cloudSplit;
+      if (!cloudOn()) { S.cloudSplit = v; saveS(); draw(); toast('Gilt erst beim Verbinden – gibt es in der Cloud schon eine Datenbank, gilt deren Aufbau.', 4500); return; }
+      box.closest('.modal').remove(); cloudChangeLayout(v);
+    } }, S.cloudSplit ? 'Zu einer Datenbank zusammenführen …' : 'Übungen und Trainings trennen …')));
+  box.appendChild(h('div', { class: 'note' }, 'Der Aufbau gilt für alle verbundenen Geräte. Ändern nur hier mit Bestätigung; die Daten werden dabei in der Cloud umgeschrieben. Andere Geräte übernehmen den neuen Aufbau beim nächsten Abgleich automatisch.'));
   box.appendChild(h('div', { class: 'lbl' }, 'Hinweise'));
   box.appendChild(segCtl([[true, 'Änderungen anderer Geräte melden'], [false, 'Nicht melden']], S.cloudNotify !== false, function (v) { S.cloudNotify = v; saveS(); draw(); }));
-  box.appendChild(h('div', { style: 'margin-top:6px' }, segCtl([[true, 'An Dateisicherung erinnern'], [false, 'Nicht erinnern']], S.fileRemind !== false, function (v) { S.fileRemind = v; saveS(); updMenuDot(); draw(); })));
+  box.appendChild(h('div', { style: 'margin-top:6px' }, segCtl([[true, 'An Dateisicherung erinnern'], [false, 'Nicht erinnern']], fileRemindOn(), function (v) { S.fileRemind = v; saveS(); updMenuDot(); draw(); })));
+  box.appendChild(h('div', { class: 'note' }, 'Der orange Punkt am ☰ erscheint nur, wenn etwas zu tun ist (Anmeldung, Fehler, Dateisicherung); der Grund steht dann oben im Menü.'));
 }
 function openSettings() {
   var ov = h('div', { class: 'modal' }), box = h('div', { class: 'mbox', style: 'max-height:90vh;overflow:auto' });
@@ -2688,7 +2701,7 @@ function openSettings() {
     box.appendChild(h('div', { class: 'note' }, stepMode() ? 'Jede Übung (bzw. jede Gruppe paralleler Übungen) bekommt eine Dauer; die Blockdauer ist die Summe.' : 'Jeder Block bekommt eine Dauer; daraus werden die Uhrzeiten der Blöcke berechnet.') );
     cloudSettings(box, draw);
     box.appendChild(h('div', { class: 'lbl' }, 'Sicherung als Datei (☰ → Sichern)'));
-    box.appendChild(segCtl([['one', 'Alles in einer Datei'], ['split', 'Übungen und Trainings getrennt']], S.saveMode === 'split' ? 'split' : 'one', function (v) { S.saveMode = v; saveS(); draw(); updMenuDot(); }));
+    box.appendChild(segCtl([['one', 'Alles in einer Datei'], ['split', 'Übungen und Trainings getrennt']], S.saveMode === 'split' ? 'split' : 'one', function (v) { S.saveMode = v; saveS(); draw(); updMenuDot(); cloudPushCfg(); }));
     box.appendChild(h('div', { class: 'note' }, S.saveMode === 'split' ? 'Zwei Dateien: vbtraining-uebungen-… (Übungsdatenbank) und vbtraining-trainings-… (Trainings).' : 'Eine Datei vbtraining-… mit Übungen, Trainings und Vorschlägen.'));
     box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
       h('button', { class: 'btn sm', onclick: function () { ov.remove(); convertSplit(); } }, 'Vorhandene Gesamtdatei aufteilen …'),
@@ -2746,6 +2759,8 @@ function openHelp() {
     '<b>Google Drive</b>: console.cloud.google.com → Projekt → Google Drive API aktivieren → OAuth-Zustimmungsbildschirm (extern, Testnutzer: eigene Adresse, Bereich drive.appdata) → Anmeldedaten → OAuth-Client „Webanwendung“, JavaScript-Ursprung ' + location.origin + ', Weiterleitungs-URI wie oben → Client-ID kopieren.</li>' +
     '<li>Die Daten liegen im App-Ordner des Anbieters (Dropbox/OneDrive: Ordner „Apps“; Google: versteckter App-Bereich). Je Übung und Training eine Datei.</li>' +
     '<li>Das Symbol <b>☁︎</b> oben zeigt den Stand (grün = abgeglichen, blinkt = läuft, orange = Anmeldung/Fehler) und gleicht beim Antippen sofort ab.</li>' +
+    '<li><b>Aufbau</b> (eine Datenbank oder Übungen und Trainings getrennt) und die Art der Dateisicherung gelten für alle verbundenen Geräte. Ändern nur in den Einstellungen mit Bestätigung; die Daten werden dann in der Cloud umgeschrieben, andere Geräte übernehmen den Aufbau beim nächsten Abgleich.</li>' +
+    '<li>Der <b>orange Punkt</b> am ☰ zeigt, dass etwas zu tun ist (Anmeldung, Fehler, fällige Dateisicherung); der Grund steht oben im Menü. Mit verbundener Cloud erinnert die App standardmäßig nicht mehr an die Dateisicherung.</li>' +
     '<li><b>Vorhandene Daten übernehmen:</b> Beim Verbinden (und bei einer anderen Cloud-Datenbank) fragt die App, ob die Trainings und Übungen dieses Geräts in die Cloud sollen: alle, eine Auswahl oder keine. Nicht übernommene sind mit „nur auf diesem Gerät“ markiert; ☰ → „In die Cloud übernehmen …“ holt sie später nach. So kann man erst mit einem Gerät starten und später alles in die Cloud bringen.</li>' +
     '<li>Ohne Internet arbeitet die App normal weiter und gleicht später ab. Sichern und Laden per Datei bleibt zusätzlich möglich.</li></ul>' +
     '<h3>Datenschutz</h3><p>Alle Eingaben (Übungen, Trainings, Namen, Bilder) bleiben auf dem Gerät bzw. in den Dateien, die du selbst sicherst. Nur wenn eine Cloud-Datenbank verbunden ist, gehen sie in dein eigenes Konto bei diesem Anbieter (Dropbox, Microsoft oder Google). Sonst sendet die App nichts an einen Server. Die Seite wird bei GitHub gehostet; GitHub verarbeitet beim Aufruf technische Daten (z. B. IP-Adresse).</p>' +
@@ -2959,14 +2974,14 @@ async function cloudOffer(intro, onlyLocal) {
   if (!cloudOn()) return;
   CS.hold = true;
   var L = {};
-  try { (await CLOUD_P[S.cloud].list()).forEach(function (f) { L[f.name] = 1; }); }
+  try { (await CLOUD_P[S.cloud].list()).forEach(function (f) { L[f.name] = f; }); await cloudReadCfg(CLOUD_P[S.cloud], L, cloudState()); }
   catch (e) { CS.hold = false; toast('Cloud: ' + e.message, 5000); return; }
   var B = cloudBases(), loc = cloudLocal();
   var exC = Array.from(DB.ex.values()).filter(function (e) { return !L[cloudPath(B.ex, 'ex', e.id)] && (!onlyLocal || loc[e.id]); });
   var trC = sortTr(Array.from(DB.tr.values()).filter(function (t) { return !L[cloudPath(B.tr, 'tr', t.id)] && (!onlyLocal || loc[t.id]); }));
   if (!exC.length && !trC.length) { CS.hold = false; if (onlyLocal) toast('Alles ist bereits in der Cloud'); return; }
   var dbName = S.cloudSplit ? '„' + (S.cloudDbEx || 'VB Training') + '“ / „' + (S.cloudDbTr || '') + '“' : '„' + (S.cloudDbEx || 'VB Training') + '“';
-  var ch = await ask((intro || '') + 'Auf diesem Gerät ' + (trC.length === 1 ? 'ist 1 Training' : 'sind ' + trC.length + ' Trainings') + ' und ' + exC.length + ' Übung(en), die noch nicht in der Cloud-Datenbank ' + dbName + ' sind. Sollen sie übernommen werden?',
+  var ch = await ask((intro || '') + 'Auf diesem Gerät ' + (trC.length === 1 ? 'ist 1 Training' : 'sind ' + trC.length + ' Trainings') + ' und ' + exC.length + ' Übung(en), die noch nicht in der Cloud-Datenbank sind. Sollen sie übernommen werden?',
     [['Alle übernehmen', 'all', 'pri'], ['Auswählen …', 'pick'], ['Keine – nur auf diesem Gerät', 'none']]);
   var selEx = [], selTr = [];
   if (ch === 'all') { selEx = exC.map(function (e) { return e.id; }); selTr = trC.map(function (t) { return t.id; }); }
@@ -2994,6 +3009,65 @@ async function cloudOffer(intro, onlyLocal) {
   CS.hold = false;
   render();
   if (selEx.length || selTr.length) toast((selTr.length + selEx.length) + ' Einträge werden in die Cloud übernommen …', 3000);
+}
+var CLOUD_CFG = 'vbtraining__config.json';
+function cloudCfg() { var B = cloudBases(); return { v: 1, split: !!S.cloudSplit, ex: B.ex, tr: B.tr, saveMode: S.saveMode || 'one', changed: Date.now() }; }
+// Aufbau aus der Cloud übernehmen; true, wenn sich der Aufbau geändert hat
+function cloudApplyCfg(cfg) {
+  if (!cfg || !cfg.ex) return false;
+  var B = cloudBases(), ch = !!cfg.split !== !!S.cloudSplit || cfg.ex !== B.ex || (cfg.split && cfg.tr !== B.tr);
+  S.cloudSplit = !!cfg.split; S.cloudDbEx = cfg.ex; S.cloudDbTr = cfg.tr || S.cloudDbTr;
+  if (cfg.saveMode && cfg.saveMode !== S.saveMode) S.saveMode = cfg.saveMode;
+  saveS();
+  return ch;
+}
+async function cloudReadCfg(P, L, s) {
+  var cf = L[CLOUD_CFG];
+  if (cf && cf.rev !== s.cfgRev) {
+    var cfg = JSON.parse(await P.get(CLOUD_CFG, cf) || '{}');
+    s.cfgRev = cf.rev; markKv('cloudState');
+    return cloudApplyCfg(cfg);
+  }
+  if (!cf) { s.cfgRev = await P.put(CLOUD_CFG, JSON.stringify(cloudCfg()), null); markKv('cloudState'); }
+  return false;
+}
+// Aufbau aktiv ändern (getrennt/zusammen): Daten in der Cloud umschreiben, andere Geräte folgen
+async function cloudChangeLayout(split) {
+  var txt = split
+    ? 'Übungen und Trainings in getrennte Datenbanken aufteilen? Die Trainings werden in der Cloud in eine eigene Datenbank verschoben.'
+    : 'Übungen und Trainings wieder in einer Datenbank zusammenführen? Die Trainings werden in der Cloud verschoben.';
+  if (!(await ask(txt + ' Das gilt für alle verbundenen Geräte; sie übernehmen den neuen Aufbau beim nächsten Abgleich. Vorher wird abgeglichen, damit nichts verloren geht.', [['Abbrechen', 0], ['Umstellen', 1, 'pri']]))) return;
+  var P = CLOUD_P[S.cloud], s = cloudState();
+  toast('Abgleich vor dem Umstellen …', 3000);
+  var r = await cloudSync(true); if (!r || CS.status !== 'ok') { ask('Umstellen abgebrochen: Der Abgleich hat nicht geklappt. Bitte später erneut versuchen.', [['OK', 1, 'pri']]); return; }
+  var old = cloudBases();
+  CS.hold = true;
+  try {
+    S.cloudSplit = split; saveS();
+    s.cfgRev = await P.put(CLOUD_CFG, JSON.stringify(cloudCfg()), (await P.list()).filter(function (f) { return f.name === CLOUD_CFG; })[0]);
+    markKv('cloudState'); flush();
+  } catch (e) { CS.hold = false; ask('Umstellen fehlgeschlagen: ' + e.message, [['OK', 1, 'pri']]); return; }
+  CS.hold = false;
+  toast('Daten werden umgeschrieben …', 4000);
+  r = await cloudSync(true);
+  if (!r || CS.status !== 'ok') { ask('Der neue Aufbau ist eingestellt, aber das Umschreiben ist noch nicht fertig. Es wird beim nächsten Abgleich fortgesetzt.', [['OK', 1, 'pri']]); return; }
+  // alte Dateien aufräumen
+  var nw = cloudBases(), del = 0;
+  try {
+    var list = await P.list(), keep = function (n) {
+      return n === CLOUD_CFG || n.indexOf(nw.ex + '__ex__') === 0 || n.indexOf(nw.tr + '__tr__') === 0 || n.indexOf(nw.ex + '__meta__') === 0 || n.indexOf(nw.tr + '__meta__') === 0;
+    };
+    for (var i = 0; i < list.length; i++) {
+      var n = list[i].name, ours = [old.ex, old.tr].some(function (b) { return n.indexOf(b + '__') === 0; });
+      if (ours && !keep(n)) { await P.del(n, list[i]); delete s.known[n]; delete s.meta[n]; del++; }
+    }
+    markKv('cloudState'); flush();
+  } catch (e) { toast('Aufräumen unvollständig: ' + e.message, 5000); }
+  ask('Umgestellt: ' + (split ? 'Übungen und Trainings liegen jetzt in getrennten Datenbanken.' : 'Übungen und Trainings liegen jetzt in einer Datenbank.') + ' Andere Geräte übernehmen das beim nächsten Abgleich.', [['OK', 1, 'pri']]);
+}
+async function cloudPushCfg() {
+  if (!cloudOn()) return;
+  try { var P = CLOUD_P[S.cloud], f = (await P.list()).filter(function (x) { return x.name === CLOUD_CFG; })[0]; cloudState().cfgRev = await P.put(CLOUD_CFG, JSON.stringify(cloudCfg()), f); markKv('cloudState'); flush(); } catch (e) {}
 }
 function cloudOn() { var a = DB.kv.cloudAuth; return !!(S.cloud && S.cloud !== 'none' && a && a.prov === S.cloud && CLOUD_P[S.cloud]); }
 function cloudBases() { var e = safeBase(S.cloudDbEx || 'VB Training'); return { ex: e, tr: S.cloudSplit ? safeBase(S.cloudDbTr || 'VB Training Trainings') : e }; }
@@ -3032,13 +3106,14 @@ async function cloudSync(manual) {
   if (CS.busy) { CS.again = true; return null; }
   if (!navigator.onLine) { CS.status = 'offline'; updCloudUi(); if (manual) toast('Keine Internetverbindung'); return null; }
   CS.busy = true; CS.err = ''; CS.progress = ''; updCloudUi();
-  var P = CLOUD_P[S.cloud], s = cloudState(), B = cloudBases(), res = { ex: 0, tr: 0, del: 0, up: 0, deferred: false, touched: [] }, held = {};
-  var bases = B.ex === B.tr ? [B.ex] : [B.ex, B.tr];
-  var kinds = [['ex', B.ex, DB.ex], ['tr', B.tr, DB.tr]];
+  var P = CLOUD_P[S.cloud], s = cloudState(), B, res = { ex: 0, tr: 0, del: 0, up: 0, deferred: false, touched: [], cfg: false }, held = {};
+  var bases, kinds;
   try {
     flush(); CS.applying = true;
     var list = await P.list(), L = {};
     list.forEach(function (f) { L[f.name] = f; });
+    res.cfg = await cloudReadCfg(P, L, s);
+    B = cloudBases(); bases = B.ex === B.tr ? [B.ex] : [B.ex, B.tr]; kinds = [['ex', B.ex, DB.ex], ['tr', B.tr, DB.tr]];
     // 1. Meta (Löschungen, Vorschläge) holen
     for (var bi = 0; bi < bases.length; bi++) {
       for (var mi = 0; mi < 2; mi++) {
@@ -3116,6 +3191,7 @@ async function cloudSync(manual) {
   CS.applying = false; flush();
   CS.busy = false; CS.progress = ''; updCloudUi();
   if (res.ex || res.tr || res.del) cloudApplied(res);
+  if (res.cfg) toast('Ein anderes Gerät hat den Aufbau der Cloud-Datenbank geändert (' + (S.cloudSplit ? 'Übungen und Trainings getrennt' : 'eine Datenbank') + ') – übernommen.', 5000);
   if (res.deferred) setTimeout(function () { cloudSync(); }, 5000);
   if (CS.again) { CS.again = false; setTimeout(function () { cloudSync(); }, 300); }
   if (manual && CS.status === 'ok') toast('Abgeglichen' + (res.up ? ' · ' + res.up + ' gesendet' : '') + ((res.ex || res.tr) ? ' · ' + (res.ex + res.tr) + ' empfangen' : ''));
@@ -3145,6 +3221,13 @@ function updCloudUi() {
   el.className = 'ib cloud ' + cls;
   el.title = cloudLine();
   updMenuDot();
+}
+function cloudShort() {
+  if (CS.busy) return 'Abgleich läuft …';
+  if (CS.status === 'offline') return 'offline, wird nachgeholt';
+  var s = cloudState(), t = s.last;
+  var when = !t ? 'noch nicht abgeglichen' : 'zuletzt ' + (Date.now() - t < 864e5 ? new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : fmtDate(new Date(t).toISOString().slice(0, 10)));
+  return (S.cloudMode === 'manual' ? 'Abgleich auf Knopfdruck' + (s.dirty ? ' · Änderungen noch nicht abgeglichen' : '') : 'gleicht automatisch ab') + ' · ' + when;
 }
 function cloudLine() {
   var n = CLOUD_NAMES[S.cloud] || 'Cloud';
