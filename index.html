@@ -42,6 +42,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 .wrap{max-width:1150px;margin:0 auto}
 .card{background:#fff;border:1px solid #e1e1db;border-radius:14px;padding:12px 14px;margin:12px 0}
 .card.orga{border-left:5px solid #e0a100}
+.exrow.var{margin-left:34px;border-left:4px solid #b8c7ee;background:#fbfcff}
+.varbtn{border:0;background:#e8eefc;color:#1d3f8f;border-radius:12px;padding:3px 10px;margin-left:8px;font-size:13px;font-weight:600;vertical-align:middle}
+.varbtn.on{background:#1f4fd1;color:#fff}
 .block{background:#f8f8f5;border:1px solid #d9d9d2;border-radius:16px;padding:10px 12px;margin:16px 0}
 .step{margin-top:10px}
 .step.par{border:2px solid #7d9be0;border-radius:14px;padding:4px 8px 8px;background:#eef3fd}
@@ -213,7 +216,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.23';
+var VERSION = '0.9.24';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -1631,7 +1634,9 @@ function exFilterBar(w, onChange, tr) {
   q.addEventListener('input', function () { st.q = q.value; onChange(); });
   var max = h('input', { type: 'number', min: 0, value: st.fMax, placeholder: '–', style: 'width:80px', inputMode: 'numeric' });
   max.addEventListener('input', function () { st.fMax = max.value; onChange(); });
-  w.appendChild(h('div', { class: 'row', style: 'margin-top:10px' }, q, h('span', { class: 'muted' }, 'max. Spieler'), max));
+  var nVar = 0; DB.ex.forEach(function (e) { if (exRootId(e) !== e.id) nVar++; });
+  w.appendChild(h('div', { class: 'row', style: 'margin-top:10px' }, q, h('span', { class: 'muted' }, 'max. Spieler'), max,
+    nVar ? h('button', { class: 'btn sm' + (st.showVar ? ' pri' : ''), title: 'Varianten ein-/ausblenden', onclick: function () { st.showVar = !st.showVar; onChange(true); } }, st.showVar ? '⑂ Varianten ausblenden' : '⑂ Varianten zeigen (' + nVar + ')') : null));
   var phc = {}; DB.ex.forEach(function (e) { e.phases.forEach(function (p) { phc[p] = (phc[p] || 0) + 1; }); });
   var pl = PHASES.filter(function (p) { return phc[p]; });
   if (pl.length) w.appendChild(h('div', { style: 'margin-top:6px' }, h('span', { class: 'muted', style: 'margin-right:4px' }, 'Phase:'), pl.map(function (p) {
@@ -1651,15 +1656,15 @@ function exFiltered() {
     if (st.fPh.length && !st.fPh.some(function (p) { return e.phases.indexOf(p) >= 0; })) return false;
     if (st.fGoals.length && !st.fGoals.every(function (g) { return e.goals.indexOf(g) >= 0; })) return false;
     if (mx && players(e) > mx) return false;
-    if (q) { var hay = [e.title, e.goals.join(' '), e.phases.join(' '), htmlText(e.desc.html)].join(' ').toLowerCase(); if (hay.indexOf(q) < 0) return false; }
+    if (q) { var hay = [e.title, e.vname || '', e.goals.join(' '), e.phases.join(' '), htmlText(e.desc.html)].join(' ').toLowerCase(); if (hay.indexOf(q) < 0) return false; }
     return true;
   }).sort(function (a, b) { return b.updated - a.updated; });
 }
-function exRow(e, onClick) {
+function exRow(e, onClick, extra, isVar) {
   var th = h('div', { class: 'th' });
-  var row = h('div', { class: 'exrow', onclick: onClick }, th,
+  var row = h('div', { class: 'exrow' + (isVar ? ' var' : ''), onclick: onClick }, th,
     h('div', { class: 'info' },
-      h('b', null, exLabel(e), e.variantOf && !e.vname ? h('span', { class: 'muted' }, ' (Variante)') : null, cloudLocalTag(e.id)),
+      h('b', null, isVar ? h('span', { class: 'muted' }, '⑂ ') : null, exLabel(e), e.variantOf && !e.vname && !isVar ? h('span', { class: 'muted' }, ' (Variante)') : null, cloudLocalTag(e.id), extra || null),
       h('div', { class: 'muted', style: 'margin:3px 0' }, players(e) + ' Spieler' + (e.pmode === 'pos' && posSum(e.pos) ? ' (' + posText(e.pos) + ')' : '')),
       h('div', null, e.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), phaseChips(e)),
       htmlText(e.desc.html).trim() ? h('div', { class: 'muted', style: 'margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, htmlText(e.desc.html).trim().split('\n')[0]) : null));
@@ -1667,6 +1672,23 @@ function exRow(e, onClick) {
   else if (hasInk(e.desc.ink)) new Pad(th, { w: 600, h: Math.min(e.desc.ink.h, 360), strokes: e.desc.ink.strokes }, { bg: lineBg() });
   else th.style.width = '0';
   return row;
+}
+// Übungsliste mit Varianten: Varianten hängen unter ihrer Ursprungsübung und sind standardmäßig eingeklappt
+function exRootId(e) { return e.variantOf && DB.ex.has(e.variantOf) ? e.variantOf : e.id; }
+function fillExList(box, list, onPick, redraw) {
+  st.openVar = st.openVar || {};
+  var inList = {}, fam = {};
+  list.forEach(function (e) { inList[e.id] = 1; });
+  list.forEach(function (e) { var r = exRootId(e); if (r !== e.id) (fam[r] = fam[r] || []).push(e); });
+  list.forEach(function (e) {
+    var r = exRootId(e);
+    if (r !== e.id && inList[r]) return;   // erscheint unter der Ursprungsübung
+    var vars = r === e.id ? (fam[e.id] || []) : [], open = st.showVar || st.openVar[e.id];
+    var badge = vars.length ? h('button', { class: 'varbtn' + (open ? ' on' : ''), title: 'Varianten anzeigen', onclick: function (ev) { ev.stopPropagation(); st.openVar[e.id] = !st.openVar[e.id]; redraw(); } },
+      '⑂ ' + vars.length + (vars.length === 1 ? ' Variante' : ' Varianten') + (open ? ' ▴' : ' ▾')) : null;
+    box.appendChild(exRow(e, function () { onPick(e); }, badge));
+    if (vars.length && open) vars.forEach(function (v) { box.appendChild(exRow(v, function () { onPick(v); }, null, true)); });
+  });
 }
 function renderPicker(w) {
   var tr = DB.tr.get(st.picker.tr);
@@ -1680,14 +1702,12 @@ function renderPicker(w) {
   function fill() {
     var list = exFiltered();
     if (!list.length) listBox.appendChild(h('div', { class: 'empty' }, DB.ex.size ? 'Keine passende Übung.' : 'Die Datenbank ist noch leer.'));
-    list.forEach(function (e) {
-      listBox.appendChild(exRow(e, function () {
-        var b = tr && tr.blocks.find(function (x) { return x.id === st.picker.block; });
-        if (!b) { st.picker = null; render(); return; }
-        b.items.push({ iid: uid(), own: false, ex: clone(e), field: '', note: null }); markTr(tr);
-        st.picker = null; render(); toast('„' + exLabel(e) + '“ eingefügt');
-      }));
-    });
+    fillExList(listBox, list, function (e) {
+      var b = tr && tr.blocks.find(function (x) { return x.id === st.picker.block; });
+      if (!b) { st.picker = null; render(); return; }
+      b.items.push({ iid: uid(), own: false, ex: clone(e), field: '', note: null }); markTr(tr);
+      st.picker = null; render(); toast('„' + exLabel(e) + '“ eingefügt');
+    }, function () { draw(); });
   }
   fill();
 }
@@ -1705,7 +1725,7 @@ function renderExView(w) {
   function fill() {
     var list = exFiltered();
     if (!list.length) listBox.appendChild(h('div', { class: 'empty' }, DB.ex.size ? 'Keine passende Übung.' : 'Noch keine Übungen. Sie entstehen hier mit „+ Neue Übung“ oder beim Planen eines Trainings.'));
-    list.forEach(function (e) { listBox.appendChild(exRow(e, function () { st.edit = clone(e); st.editOrig = JSON.stringify(st.edit); st.editNew = false; render(true); })); });
+    fillExList(listBox, list, function (e) { st.edit = clone(e); st.editOrig = JSON.stringify(st.edit); st.editNew = false; render(true); }, function () { draw(); });
   }
   fill();
 }
@@ -2738,6 +2758,7 @@ function openHelp() {
     '<li><b>Trainingsphase</b> (optional): Aufwärmen, Einspielen, Grundtechnik, Taktik, Komplex oder Spiel. In der Übungsliste lässt sich danach filtern.</li>' +
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte an: „In Datenbank aktualisieren“ (ersetzt die Übung), „Als Variante speichern …“ (zusätzliche Fassung mit Bezeichnung, z. B. „für 12 Spieler“; erscheint als „Titel – für 12 Spieler“) oder „Als neue Übung aufnehmen …“ (eigenständige Übung). Ohne Klick bleibt die Änderung nur in diesem Training. Dasselbe gibt es im Reiter Übungen beim Bearbeiten.</li>' +
+    '<li><b>Varianten in der Liste:</b> Varianten stehen eingeklappt unter ihrer Ursprungsübung; dort zeigt <b>⑂ 3 Varianten ▾</b>, dass es welche gibt – antippen klappt sie auf (zum Ansehen oder Auswählen). „⑂ Varianten zeigen“ neben der Suche klappt alle auf.</li>' +
     '<li><b>Organisatorisches / Vorab</b> (unter den Positionen, optional): Knopf aufklappen, dann Textfeld und/oder Handschriftfeld anlegen – für Punkte, die vor dem Training angesprochen werden. Erscheint beim Durchführen oben und im PDF; beim Kopieren eines Trainings wird es nicht übernommen.</li>' +
     '<li>Oben im Training: optional das <b>Team</b> (wird gelernt, Auswahl über ▾) und die <b>Ziele des Trainings</b>.</li>' +
     '<li>Ziele, Namen, Orte und Felder lernt die App. Vorschläge öffnen sich über den kleinen Pfeil <b>▾</b> als Liste; beim Tippen erscheinen passende Einträge. Vertippte oder überholte Einträge: <b>☰ → Vorschläge verwalten</b> (umbenennen – auf Wunsch überall – oder aus der Liste löschen).</li>' +
