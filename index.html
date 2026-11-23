@@ -213,7 +213,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.22';
+var VERSION = '0.9.23';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -2641,6 +2641,10 @@ function cloudSettings(box, draw) {
   }));
   if (cur === 'none') {
     box.appendChild(h('div', { class: 'note' }, 'Daten liegen nur auf diesem Gerät; übertragen per Datei (☰ → Sichern / Laden). Mit Dropbox, OneDrive oder Google Drive gleichen sich alle verbundenen Geräte automatisch ab. Einrichtung: ☰ → Hilfe → „Cloud-Datenbank“.'));
+    var code0 = h('textarea', { placeholder: 'Code (VBT-…) von einem verbundenen Gerät hier einfügen', style: 'display:none;min-height:60px;margin-top:6px;font-size:12px' });
+    var go0 = h('button', { class: 'btn sm pri', style: 'display:none;margin-top:6px', onclick: function () { box.closest('.modal').remove(); cloudPasteCode(code0.value); } }, 'Code verwenden');
+    box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn sm', onclick: function () { code0.style.display = go0.style.display = 'block'; code0.focus(); } }, 'Verbindungs-Code eines anderen Geräts einfügen …')));
+    box.appendChild(code0); box.appendChild(go0);
     return;
   }
   var name = CLOUD_NAMES[cur], on = cloudOn();
@@ -2658,6 +2662,7 @@ function cloudSettings(box, draw) {
     on ? h('button', { class: 'btn sm', onclick: function () { box.closest('.modal').remove(); cloudSync(true); } }, '⇅ Jetzt abgleichen') : null,
     on ? h('button', { class: 'btn sm', onclick: async function () { box.closest('.modal').remove(); await cloudOffer('', false); cloudSync(true); } }, 'Daten dieses Geräts übernehmen …') : null,
     h('button', { class: 'btn sm', onclick: function () { code.style.display = codeGo.style.display = 'block'; code.focus(); } }, 'Code einfügen …'),
+    on ? h('button', { class: 'btn sm', onclick: function () { box.closest('.modal').remove(); cloudShowTransfer(); } }, 'Verbindung an anderes Gerät weitergeben …') : null,
     on ? h('button', { class: 'btn sm warn', onclick: async function () {
       if (await ask('Verbindung mit ' + name + ' auf diesem Gerät trennen? Die Daten bleiben auf dem Gerät und in der Cloud.', [['Abbrechen', 0], ['Trennen', 1, 'warn']])) { cloudDisconnect(); draw(); }
     } }, 'Trennen') : null));
@@ -2759,6 +2764,7 @@ function openHelp() {
     '<b>Google Drive</b>: console.cloud.google.com → Projekt → Google Drive API aktivieren → OAuth-Zustimmungsbildschirm (extern, Testnutzer: eigene Adresse, Bereich drive.appdata) → Anmeldedaten → OAuth-Client „Webanwendung“, JavaScript-Ursprung ' + location.origin + ', Weiterleitungs-URI wie oben → Client-ID kopieren.</li>' +
     '<li>Die Daten liegen im App-Ordner des Anbieters (Dropbox/OneDrive: Ordner „Apps“; Google: versteckter App-Bereich). Je Übung und Training eine Datei.</li>' +
     '<li>Das Symbol <b>☁︎</b> oben zeigt den Stand (grün = abgeglichen, blinkt = läuft, orange = Anmeldung/Fehler) und gleicht beim Antippen sofort ab.</li>' +
+    '<li><b>Anmeldeseite lädt nicht</b> (z. B. iPad Air 2 mit iOS 15): Auf einem verbundenen Gerät Einstellungen → Datenbank → „Verbindung an anderes Gerät weitergeben …“ → Code kopieren (z. B. per AirDrop/Notizen übertragen) → auf dem alten Gerät Einstellungen → Datenbank → „Code einfügen …“. Der Code ist wie ein Passwort.</li>' +
     '<li><b>Aufbau</b> (eine Datenbank oder Übungen und Trainings getrennt) und die Art der Dateisicherung gelten für alle verbundenen Geräte. Ändern nur in den Einstellungen mit Bestätigung; die Daten werden dann in der Cloud umgeschrieben, andere Geräte übernehmen den Aufbau beim nächsten Abgleich.</li>' +
     '<li>Der <b>orange Punkt</b> am ☰ zeigt, dass etwas zu tun ist (Anmeldung, Fehler, fällige Dateisicherung); der Grund steht oben im Menü. Mit verbundener Cloud erinnert die App standardmäßig nicht mehr an die Dateisicherung.</li>' +
     '<li><b>Vorhandene Daten übernehmen:</b> Beim Verbinden (und bei einer anderen Cloud-Datenbank) fragt die App, ob die Trainings und Übungen dieses Geräts in die Cloud sollen: alle, eine Auswahl oder keine. Nicht übernommene sind mit „nur auf diesem Gerät“ markiert; ☰ → „In die Cloud übernehmen …“ holt sie später nach. So kann man erst mit einem Gerät starten und später alles in die Cloud bringen.</li>' +
@@ -3267,11 +3273,44 @@ async function cloudFinish(pend, pl) {
   var r = await cloudSync(true);
   if (r && first) ask('Verbunden mit ' + CLOUD_NAMES[pend.p] + '. Erster Abgleich: ' + r.up + ' Einträge hochgeladen, ' + (r.ex + r.tr) + ' aus der Cloud übernommen.' + (Object.keys(cloudLocal()).length ? ' ' + Object.keys(cloudLocal()).length + ' Einträge bleiben nur auf diesem Gerät.' : '') + (S.cloudMode === 'manual' ? ' Abgleich nur auf Knopfdruck (☰ → Jetzt abgleichen).' : ' Ab jetzt wird automatisch abgeglichen.'), [['OK', 1, 'pri']]);
 }
+// Verbindung eines angemeldeten Geräts an ein anderes weitergeben (z. B. altes iPad, auf dem die Anmeldeseite nicht lädt)
+function cloudTransferCode() {
+  var a = DB.kv.cloudAuth;
+  return cloudCodeString({ transfer: 1, p: a.prov, key: a.key, refresh: a.refresh || null, access: a.refresh ? null : a.access, exp: a.refresh ? 0 : Math.round((a.exp - Date.now()) / 1000) });
+}
+function cloudShowTransfer() {
+  if (!cloudOn()) return;
+  var c = cloudTransferCode(), ta = h('textarea', { readOnly: true, style: 'min-height:80px;font-size:12px' }); ta.value = c;
+  var ov = h('div', { class: 'modal' });
+  var copy = function () { ta.select(); var ok = function () { toast('Code kopiert'); }; try { navigator.clipboard.writeText(c).then(ok, function () { document.execCommand('copy'); ok(); }); } catch (e) { document.execCommand('copy'); ok(); } };
+  ov.appendChild(h('div', { class: 'mbox' },
+    h('h2', { style: 'margin-top:0' }, 'Verbindung weitergeben'),
+    h('div', { class: 'mtxt' }, 'Für ein Gerät, auf dem die Anmeldung bei ' + CLOUD_NAMES[S.cloud] + ' nicht klappt (z. B. iPad Air 2): Code kopieren und zum anderen Gerät bringen (AirDrop, Notizen, Nachricht an sich selbst). Dort ☰ → Einstellungen → Datenbank → „Code einfügen …“.'),
+    ta,
+    h('div', { class: 'status warn', style: 'margin-top:8px' }, 'Der Code ist wie ein Passwort: Wer ihn hat, kann auf die Trainingsdaten in deinem ' + CLOUD_NAMES[S.cloud] + ' zugreifen. Nicht weitergeben und nach dem Einfügen löschen.' + (S.cloud === 'google' ? ' Google: gilt nur etwa eine Stunde.' : '')),
+    h('div', { class: 'mbtns', style: 'margin-top:10px' },
+      h('button', { class: 'btn', onclick: function () { ov.remove(); } }, 'Schließen'),
+      navigator.share ? h('button', { class: 'btn', onclick: function () { navigator.share({ text: c }).catch(function () {}); } }, '↑ Teilen') : null,
+      h('button', { class: 'btn pri', onclick: copy }, 'Code kopieren'))));
+  document.body.appendChild(ov);
+}
+async function cloudAdopt(pl) {
+  if (!CLOUD_P[pl.p]) { toast('Unbekannter Anbieter im Code'); return; }
+  var auth = { prov: pl.p, key: pl.key, refresh: pl.refresh || null, access: pl.access || null, exp: pl.access ? Date.now() + (+pl.exp || 0) * 1000 : 0 };
+  S.cloud = pl.p; S.cloudKeys = S.cloudKeys || {}; S.cloudKeys[pl.p] = pl.key; saveS();
+  var first = !DB.kv.cloudState || DB.kv.cloudState.prov !== pl.p || !DB.kv.cloudState.last;
+  DB.kv.cloudAuth = auth; markKv('cloudAuth'); flush(); CS.status = ''; updCloudUi();
+  try { await cloudToken(!auth.access); } catch (e) { DB.kv.cloudAuth = null; markKv('cloudAuth'); flush(); updCloudUi(); ask('Der Code funktioniert nicht (mehr): ' + e.message + '. Auf dem anderen Gerät einen neuen Code erzeugen.', [['OK', 1, 'pri']]); return; }
+  await cloudOffer('Verbunden mit ' + CLOUD_NAMES[pl.p] + '. ');
+  var r = await cloudSync(true);
+  if (r && first) ask('Verbunden mit ' + CLOUD_NAMES[pl.p] + ' (Verbindung von einem anderen Gerät übernommen). Erster Abgleich: ' + r.up + ' Einträge hochgeladen, ' + (r.ex + r.tr) + ' aus der Cloud übernommen.', [['OK', 1, 'pri']]);
+}
 function cloudCodeString(pl) { return 'VBT-' + btoa(unescape(encodeURIComponent(JSON.stringify(pl)))); }
 function cloudPasteCode(str) {
   var pl;
   try { pl = JSON.parse(decodeURIComponent(escape(atob(String(str).trim().replace(/^VBT-/, ''))))); } catch (e) { toast('Das ist kein gültiger Anmelde-Code'); return; }
   var pend = null; try { pend = JSON.parse(localStorage.getItem('vbtrain-auth') || 'null'); } catch (e) {}
+  if (pl.transfer) { cloudAdopt(pl); return; }
   if (!pend || pend.state !== pl.state) { ask('Der Code passt nicht zu einer Anmeldung auf diesem Gerät. Bitte hier „Verbinden“ erneut tippen und den neuen Code verwenden.', [['OK', 1, 'pri']]); return; }
   cloudFinish(pend, pl);
 }
