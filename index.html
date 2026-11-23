@@ -27,6 +27,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sp{flex:1}
 .ib{border:0;background:transparent;width:44px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;position:relative;flex:none}
 .ib.dot:after{content:'';position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:#e07b00}
+#cloudbar{flex:none;display:none;background:#1f4fd1;color:#fff;text-align:center;padding:9px;font-weight:600;cursor:pointer}
+.ib.cloud{display:none;font-size:20px}
+.ib.cloud.ok{color:#2e9a3a}.ib.cloud.busy{color:#1f4fd1;animation:cpulse 1s infinite alternate}.ib.cloud.warn{color:#e07b00}.ib.cloud.off{color:#999}.ib.cloud.pend{color:#1f4fd1}
+@keyframes cpulse{from{opacity:1}to{opacity:.35}}
 #upd{flex:none;display:none;background:#2e9a3a;color:#fff;text-align:center;padding:10px;font-weight:600;cursor:pointer}
 #pens{flex:none;display:none;background:var(--ui);border-bottom:1px solid var(--line);padding:2px calc(8px + env(safe-area-inset-right)) 2px calc(8px + env(safe-area-inset-left));align-items:center;gap:2px;overflow-x:auto}
 #pens.show{display:flex}
@@ -85,7 +89,7 @@ h2{font-size:20px;margin:16px 0 8px}
 .pc span{min-width:24px;text-align:center;font-weight:600}
 .pc button{border:0;background:#fff;width:32px;height:32px;border-radius:8px;font-size:18px;line-height:1}
 .sum{font-weight:600}
-.seg{display:inline-flex;background:#ececea;border-radius:10px;padding:3px;gap:2px}
+.seg{display:inline-flex;flex-wrap:wrap;max-width:100%;background:#ececea;border-radius:10px;padding:3px;gap:2px}
 .seg button{border:0;background:transparent;padding:7px 11px;border-radius:8px;font-size:14px;white-space:nowrap}
 .seg button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18)}
 .cols{display:flex;gap:14px;align-items:flex-start}
@@ -184,9 +188,11 @@ input[type=range]{width:100%;height:34px}
     <button data-view="ex">Übungen</button>
   </div>
   <div class="sp"></div>
+  <button class="ib cloud" id="cloudInd" title="Cloud">☁︎</button>
   <button class="ib" id="menuBtn" title="Menü">☰</button>
 </div>
 <div id="upd">Neue Version bereit – hier tippen zum Aktualisieren</div>
+<div id="cloudbar">Änderungen von einem anderen Gerät – hier tippen zum Anzeigen</div>
 <div id="pens">
   <button class="tb" data-tool="p0" title="Stift 1"></button>
   <button class="tb" data-tool="p1" title="Stift 2"></button>
@@ -207,7 +213,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.19';
+var VERSION = '0.9.21';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -223,7 +229,8 @@ var ER_R = [['S', 6], ['M', 12], ['L', 26]];
 var DEF_SET = {
   slots: [{ c: '#1a1a1a', w: 1.6 }, { c: '#1f4fd1', w: 1.6 }, { c: '#d02a2a', w: 2.6 }],
   hl: { c: '#fff176', w: 18 }, er: { mode: 'stroke', r: 12 },
-  pressure: true, sens: 0.7, finger: false, fs: 26, lines: true, saveMode: 'one', coachUrl: 'https://app-laden.github.io/vbcoachingboard/'
+  pressure: true, sens: 0.7, finger: false, fs: 26, lines: true, saveMode: 'one', coachUrl: 'https://app-laden.github.io/vbcoachingboard/',
+  cloud: 'none', cloudKeys: { dropbox: '', onedrive: '', google: '' }, cloudMode: 'auto', cloudSplit: false, cloudDbEx: 'VB Training', cloudDbTr: 'VB Training Trainings', cloudNotify: true, fileRemind: true
 };
 
 /* ================= DOM-Helfer ================= */
@@ -255,6 +262,31 @@ function ask(msg, btns) {
       h('div', { class: 'mbtns' }, btns.map(function (b) { return h('button', { class: 'btn ' + (b[2] || ''), onclick: function () { ov.remove(); res(b[1]); } }, b[0]); }))));
     document.body.appendChild(ov);
   });
+}
+function askText(msg, value, ph, okLabel) {
+  return new Promise(function (res) {
+    var inp2 = h('input', { type: 'text', value: value || '', placeholder: ph || '', style: 'width:100%;margin-top:8px' });
+    var done = function (v) { ov.remove(); res(v); };
+    inp2.addEventListener('keydown', function (e) { if (e.key === 'Enter') done(inp2.value.trim()); });
+    var ov = h('div', { class: 'modal' }, h('div', { class: 'mbox' }, h('div', { class: 'mtxt' }, msg), inp2,
+      h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: function () { done(null); } }, 'Abbrechen'), h('button', { class: 'btn pri', onclick: function () { done(inp2.value.trim()); } }, okLabel || 'OK'))));
+    document.body.appendChild(ov); setTimeout(function () { inp2.focus(); inp2.select(); }, 30);
+  });
+}
+// Variante bzw. neue Übung aus einer Übung anlegen: liefert die neue DB-Fassung oder null
+async function makeVariant(ex, asNew) {
+  if (asNew) {
+    var t = await askText('Als neue, eigenständige Übung in die Datenbank aufnehmen. Titel:', ex.title || '', 'Titel der Übung', 'Aufnehmen');
+    if (t == null) return null;
+    var c = clone(ex); c.id = uid(); c.title = t; c.vname = ''; c.variantOf = null; c.created = c.updated = Date.now();
+    return c;
+  }
+  var pl = players(ex), sug = pl ? 'für ' + pl + ' Spieler' : '';
+  var v = await askText('Als Variante von „' + (ex.title || exLabel(ex)) + '“ speichern. Kurze Bezeichnung der Variante, z. B. „für 12 Spieler“ oder „mit Block“:', ex.vname && ex.variantOf ? '' : sug, 'z. B. für 12 Spieler', 'Speichern');
+  if (v == null) return null;
+  var src = DB.ex.get(ex.id), root = (src && src.variantOf) || ex.variantOf || ex.id;
+  var c2 = clone(ex); c2.id = uid(); c2.vname = v; c2.variantOf = root; c2.created = c2.updated = Date.now();
+  return c2;
 }
 function autoGrow(ta) { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; }
 /* Formatierter Text */
@@ -416,9 +448,11 @@ function idbDel(store, key) { if (!idb) return; try { idb.transaction(store, 're
 var dirtyEx = new Set(), dirtyTr = new Set(), dirtyKv = new Set(), saveTimer = 0;
 function schedule() { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 500); }
 function flush() {
+  var cloudCh = dirtyEx.size || dirtyTr.size || dirtyKv.has('lex') || dirtyKv.has('deleted');
   dirtyEx.forEach(function (id) { var e = DB.ex.get(id); if (e) idbPut('ex', e); }); dirtyEx.clear();
   dirtyTr.forEach(function (id) { var e = DB.tr.get(id); if (e) idbPut('tr', e); }); dirtyTr.clear();
   dirtyKv.forEach(function (k) { idbPut('kv', DB.kv[k], k); }); dirtyKv.clear();
+  if (cloudCh && typeof cloudKick === 'function') cloudKick();
 }
 function markEx(ex) { ex.updated = Date.now(); dirtyEx.add(ex.id); setDirty('ex'); schedule(); }
 function markTr(tr) { tr.updated = Date.now(); dirtyTr.add(tr.id); setDirty('tr'); schedule(); }
@@ -496,7 +530,7 @@ function addGrip(parent, pad, d, onChange, minH) {
   return g;
 }
 function hasDesc(ex) { return !!(htmlText(ex.desc.html).trim() || hasInk(ex.desc.ink)); }
-function sig(ex) { return JSON.stringify([ex.title, ex.goals, ex.phases, ex.pmode, ex.pmode === 'pos' ? ex.pos : ex.total, ex.desc.html, ex.desc.ink.strokes, ex.imgs, ex.iw]); }
+function sig(ex) { return JSON.stringify([ex.title, ex.vname || '', ex.goals, ex.phases, ex.pmode, ex.pmode === 'pos' ? ex.pos : ex.total, ex.desc.html, ex.desc.ink.strokes, ex.imgs, ex.iw]); }
 function fixPar(b) { if (b.items[0]) b.items[0].par = false; }
 function steps(b) {
   var out = [];
@@ -557,7 +591,7 @@ function blockTimes(tr) {
   return out;
 }
 function timeLabel(x) { return !x ? '' : x.e == null ? 'ab ' + fmtTime(x.s) : fmtTime(x.s) + '–' + fmtTime(x.e); }
-function exLabel(ex) { return ex.title || (ex.goals.length ? ex.goals.join(', ') : 'Übung ohne Titel'); }
+function exLabel(ex) { return (ex.title || (ex.goals.length ? ex.goals.join(', ') : 'Übung ohne Titel')) + (ex.vname ? ' – ' + ex.vname : ''); }
 
 /* ================= Tinte: Geometrie ================= */
 function polyS(s) { return !!(s.d || s.l || s.a); }
@@ -1321,6 +1355,11 @@ function exCard(ex, o) {
   var tIn = h('input', { type: 'text', class: 'title', value: ex.title, placeholder: 'Titel der Übung' });
   tIn.addEventListener('input', function () { ex.title = tIn.value; ch(); });
   var head = h('div', { class: 'head' }, o.num ? h('span', { class: 'num' }, o.num) : null, tIn);
+  if (ex.vname || ex.variantOf) {
+    var vIn = h('input', { type: 'text', value: ex.vname || '', placeholder: 'Variante', title: 'Bezeichnung der Variante', style: 'width:150px' });
+    vIn.addEventListener('input', function () { ex.vname = vIn.value; ch(); });
+    head.appendChild(h('span', { class: 'muted' }, 'Variante')); head.appendChild(vIn);
+  }
   if (o.mode === 'plan') {
     if (o.par != null) head.appendChild(h('button', { class: 'btn sm partog' + (o.par ? ' on' : ''), title: 'gleichzeitig mit der Übung davor', onclick: o.onPar }, '∥ parallel'));
     head.appendChild(h('span', { class: 'muted' }, 'Feld'));
@@ -1390,7 +1429,7 @@ function renderPlan(w) {
     if (!list.length) w.appendChild(h('div', { class: 'empty' }, 'Noch kein Training. Lege mit „+ Neues Training“ das erste an.'));
     list.forEach(function (t) {
       w.appendChild(h('div', { class: 'trow', onclick: function () { go('plan', { trId: t.id }); } },
-        h('div', { class: 't' }, h('b', null, trTitle(t)), h('span', { class: 'muted' }, ((t.goals || []).length ? t.goals.join(', ') + ' · ' : '') + t.blocks.length + ' Blöcke · ' + trCount(t) + ' Übungen' + (t.participants.names.length ? ' · ' + t.participants.names.length + ' Teilnehmer' : ''))),
+        h('div', { class: 't' }, h('b', null, trTitle(t), cloudLocalTag(t.id)), h('span', { class: 'muted' }, ((t.goals || []).length ? t.goals.join(', ') + ' · ' : '') + t.blocks.length + ' Blöcke · ' + trCount(t) + ' Übungen' + (t.participants.names.length ? ' · ' + t.participants.names.length + ' Teilnehmer' : ''))),
         h('button', { class: 'btn sm', onclick: function (e) { e.stopPropagation(); var c = clone(t); c.id = uid(); c.date = todayISO(); c.participants = { names: [], shots: [], pos: zeroPos() }; c.orga = null; c.blocks.forEach(function (b) { b.id = uid(); b.items.forEach(function (it) { it.iid = uid(); it.note = null; }); }); DB.tr.set(c.id, c); markTr(c); go('plan', { trId: c.id }); toast('Training kopiert'); } }, 'Kopieren'),
         h('button', { class: 'btn sm warn', onclick: async function (e) { e.stopPropagation(); if (await ask('Training „' + trTitle(t) + '“ löschen? Die Übungen bleiben in der Datenbank.', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { delTr(t.id); render(); } } }, 'Löschen')));
     });
@@ -1570,16 +1609,19 @@ function planItem(tr, b, it, ii, num) {
         if (!ex.goals.length) { toast('Für die Datenbank braucht die Übung mindestens ein Ziel.'); return; }
         var c = clone(ex); c.created = src.created; c.variantOf = src.variantOf; DB.ex.set(c.id, c); markEx(c); toast('Übung in der Datenbank aktualisiert'); planItemStatusRefresh(el, tr, b, it, ii);
       }));
-      el.appendChild(act('Als neue Variante speichern', function () { saveVariant(tr, it, el); }));
+      el.appendChild(act('Als Variante speichern …', function () { saveVariant(tr, it, el, false, false); }));
+      el.appendChild(act('Als neue Übung aufnehmen …', function () { saveVariant(tr, it, el, false, true); }));
     }
   });
   function planItemStatusRefresh() { render(); }
-  function saveVariant(tr2, it2, el, same) {
+  async function saveVariant(tr2, it2, el, same, asNew) {
     if (!ex.goals.length) { toast('Für die Datenbank braucht die Übung mindestens ein Ziel.'); return; }
     var c = clone(ex);
-    var src0 = DB.ex.get(ex.id);
-    if (!same) { c.variantOf = ex.id; c.id = uid(); if (!ex.title || (src0 && src0.title === ex.title)) c.title = (ex.title || exLabel(ex)) + ' – Variante'; c.created = Date.now(); ex.id = c.id; ex.title = c.title; ex.variantOf = c.variantOf; }
-    DB.ex.set(c.id, c); markEx(c); markTr(tr); toast(same ? 'In der Datenbank gespeichert' : 'Als neue Variante gespeichert'); render();
+    if (!same) {
+      c = await makeVariant(ex, asNew); if (!c) return;
+      ex.id = c.id; ex.title = c.title; ex.vname = c.vname; ex.variantOf = c.variantOf; ex.created = c.created;
+    }
+    DB.ex.set(c.id, c); markEx(c); markTr(tr); toast(same ? 'In der Datenbank gespeichert' : asNew ? 'Als neue Übung aufgenommen' : 'Als Variante gespeichert: ' + exLabel(c)); render();
   }
 }
 
@@ -1617,7 +1659,7 @@ function exRow(e, onClick) {
   var th = h('div', { class: 'th' });
   var row = h('div', { class: 'exrow', onclick: onClick }, th,
     h('div', { class: 'info' },
-      h('b', null, exLabel(e), e.variantOf ? h('span', { class: 'muted' }, ' (Variante)') : null),
+      h('b', null, exLabel(e), e.variantOf && !e.vname ? h('span', { class: 'muted' }, ' (Variante)') : null, cloudLocalTag(e.id)),
       h('div', { class: 'muted', style: 'margin:3px 0' }, players(e) + ' Spieler' + (e.pmode === 'pos' && posSum(e.pos) ? ' (' + posText(e.pos) + ')' : '')),
       h('div', null, e.goals.map(function (g) { return h('span', { class: 'chip' }, g); }), phaseChips(e)),
       htmlText(e.desc.html).trim() ? h('div', { class: 'muted', style: 'margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, htmlText(e.desc.html).trim().split('\n')[0]) : null));
@@ -1679,16 +1721,17 @@ function renderExEdit(w) {
   var saveBtn = h('button', { class: 'btn pri' }, isNew ? 'In Datenbank speichern' : 'Speichern');
   var info = h('span', { class: 'muted' });
   var upd = function () { var m = missing(); saveBtn.disabled = !!m.length; info.textContent = m.length ? 'Fehlt: ' + m.join(', ') : ''; };
-  var doSave = function (asVariant) {
+  var doSave = async function (mode) {
     if (missing().length) return;
     var c = clone(ex);
-    if (asVariant) { var o0 = DB.ex.get(ex.id); c.variantOf = ex.id; c.id = uid(); c.created = Date.now(); if (!ex.title || (o0 && o0.title === ex.title)) c.title = (ex.title || exLabel(ex)) + ' – Variante'; }
-    DB.ex.set(c.id, c); markEx(c); st.edit = null; toast(asVariant ? 'Als neue Variante gespeichert' : 'Gespeichert'); render();
+    if (mode) { c = await makeVariant(ex, mode === 'new'); if (!c) return; }
+    DB.ex.set(c.id, c); markEx(c); st.edit = null; toast(mode === 'new' ? 'Als neue Übung aufgenommen' : mode ? 'Als Variante gespeichert: ' + exLabel(c) : 'Gespeichert'); render();
   };
   saveBtn.onclick = function () { doSave(false); };
   w.appendChild(h('div', { class: 'row', style: 'margin-top:12px' },
     h('button', { class: 'btn', onclick: function () { go('ex', {}); } }, '← Übersicht'), h('div', { class: 'sp' }), info,
-    !isNew ? h('button', { class: 'btn', onclick: function () { if (missing().length) { toast('Fehlt: ' + missing().join(', ')); return; } doSave(true); } }, 'Als Variante speichern') : null,
+    !isNew ? h('button', { class: 'btn', onclick: function () { if (missing().length) { toast('Fehlt: ' + missing().join(', ')); return; } doSave('var'); } }, 'Als Variante …') : null,
+    !isNew ? h('button', { class: 'btn', onclick: function () { if (missing().length) { toast('Fehlt: ' + missing().join(', ')); return; } doSave('new'); } }, 'Als neue Übung …') : null,
     !isNew ? h('button', { class: 'btn warn', onclick: async function () { if (await ask('Übung aus der Datenbank löschen? In bereits geplanten Trainings bleibt sie erhalten.', [['Abbrechen', 0], ['Löschen', 1, 'warn']])) { delEx(ex.id); st.edit = null; render(); } } }, 'Löschen') : null,
     saveBtn));
   if (ex.pmode !== 'pos') ex.pmode = 'pos';
@@ -2198,7 +2241,8 @@ function pdfDialog(blob, name) {
 /* ================= Menü: Sichern, Laden, Einstellungen, Hilfe ================= */
 function updMenuDot() {
   var stale = function (t) { return !t || Date.now() - t > 3 * 864e5; };
-  var due = (DB.kv.dirtyEx && stale(DB.kv.backupEx) && DB.ex.size) || (DB.kv.dirtyTr && stale(DB.kv.backupTr) && DB.tr.size);
+  var due = S.fileRemind !== false && ((DB.kv.dirtyEx && stale(DB.kv.backupEx) && DB.ex.size) || (DB.kv.dirtyTr && stale(DB.kv.backupTr) && DB.tr.size));
+  if (typeof cloudOn === 'function' && S.cloud && S.cloud !== 'none' && (!cloudOn() || CS.status === 'auth' || CS.status === 'err')) due = true;
   $('#menuBtn').classList.toggle('dot', !!due);
 }
 function ago(t) { if (!t) return 'noch nie'; var d = Math.floor((Date.now() - t) / 864e5); return d <= 0 ? 'heute' : d === 1 ? 'gestern' : 'vor ' + d + ' Tagen'; }
@@ -2206,6 +2250,13 @@ $('#menuBtn').onclick = function () {
   if (curPop && curPop.dataset.for === 'menu') { closePops(); return; }
   openPop($('#menuBtn'), 'menu', function (p) {
     p.classList.add('menu');
+    if (S.cloud && S.cloud !== 'none') {
+      p.appendChild(h('div', { class: 'note', style: 'padding:6px 8px 2px' }, '☁︎ ' + cloudLine()));
+      if (cloudOn() && CS.status !== 'auth') p.appendChild(h('button', { onclick: function () { closePops(); cloudSync(true); } }, '⇅ Jetzt abgleichen'));
+      var nLoc = cloudOn() ? Object.keys(cloudLocal()).filter(function (id) { return DB.ex.has(id) || DB.tr.has(id); }).length : 0;
+      if (nLoc) p.appendChild(h('button', { onclick: async function () { closePops(); await cloudOffer('', true); cloudSync(true); } }, '☁︎ In die Cloud übernehmen … (' + nLoc + ' nur hier)'));
+      else p.appendChild(h('button', { onclick: function () { closePops(); cloudConnect(S.cloud); } }, '⚠ Bei ' + CLOUD_NAMES[S.cloud] + ' anmelden'));
+    }
     p.appendChild(h('button', { onclick: function () { closePops(); exportAll(); } }, '💾 Sichern (Datei)'));
     p.appendChild(h('button', { onclick: function () { closePops(); importAll(); } }, '📂 Laden (Datei)'));
     p.appendChild(h('button', { onclick: function () { closePops(); exportSelection(); } }, '📤 Trainings weitergeben …'));
@@ -2567,6 +2618,55 @@ function openLexicon() {
   }
   draw(); ov.appendChild(box); document.body.appendChild(ov);
 }
+function cloudSettings(box, draw) {
+  box.appendChild(h('div', { class: 'lbl' }, 'Datenbank'));
+  var cur = S.cloud && S.cloud !== 'none' ? S.cloud : 'none';
+  box.appendChild(segCtl([['none', 'Nur Gerät'], ['dropbox', 'Dropbox'], ['onedrive', 'OneDrive'], ['google', 'Google Drive']], cur, async function (v) {
+    if (v === cur) return;
+    if (cloudOn() && !(await ask('Verbindung mit ' + CLOUD_NAMES[cur] + ' trennen? Die Daten bleiben auf diesem Gerät und in der Cloud.', [['Abbrechen', 0], ['Trennen', 1, 'warn']]))) return;
+    if (cloudOn()) cloudDisconnect();
+    S.cloud = v; saveS(); updCloudUi(); draw();
+  }));
+  if (cur === 'none') {
+    box.appendChild(h('div', { class: 'note' }, 'Daten liegen nur auf diesem Gerät; übertragen per Datei (☰ → Sichern / Laden). Mit Dropbox, OneDrive oder Google Drive gleichen sich alle verbundenen Geräte automatisch ab. Einrichtung: ☰ → Hilfe → „Cloud-Datenbank“.'));
+    return;
+  }
+  var name = CLOUD_NAMES[cur], on = cloudOn();
+  S.cloudKeys = S.cloudKeys || {};
+  var key = h('input', { type: 'text', value: S.cloudKeys[cur] || '', placeholder: cur === 'dropbox' ? 'App key' : 'Client-ID', autocapitalize: 'off', spellcheck: false, style: 'flex:1;min-width:200px' });
+  key.addEventListener('change', function () { S.cloudKeys[cur] = key.value.trim(); saveS(); });
+  box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' }, h('span', { class: 'muted' }, cur === 'dropbox' ? 'App-Schlüssel' : 'Client-ID'), key));
+  box.appendChild(h('div', { class: 'note' }, 'Weiterleitungs-Adresse für die Einrichtung beim Anbieter: ' + redirectUri()));
+  var stat = h('div', { class: 'status ' + (on && CS.status !== 'auth' && CS.status !== 'err' ? 'ok' : 'warn'), style: 'margin-top:8px' }, cloudLine());
+  box.appendChild(stat);
+  var code = h('textarea', { placeholder: 'Anmelde-Code (VBT-…) hier einfügen', style: 'display:none;min-height:60px;margin-top:6px;font-size:12px' });
+  var codeGo = h('button', { class: 'btn sm pri', style: 'display:none;margin-top:6px', onclick: function () { box.closest('.modal').remove(); cloudPasteCode(code.value); } }, 'Code verwenden');
+  box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
+    h('button', { class: 'btn sm' + (on ? '' : ' pri'), onclick: function () { S.cloudKeys[cur] = key.value.trim(); saveS(); cloudConnect(cur); } }, on ? 'Neu anmelden' : 'Verbinden'),
+    on ? h('button', { class: 'btn sm', onclick: function () { box.closest('.modal').remove(); cloudSync(true); } }, '⇅ Jetzt abgleichen') : null,
+    on ? h('button', { class: 'btn sm', onclick: async function () { box.closest('.modal').remove(); await cloudOffer('', false); cloudSync(true); } }, 'Daten dieses Geräts übernehmen …') : null,
+    h('button', { class: 'btn sm', onclick: function () { code.style.display = codeGo.style.display = 'block'; code.focus(); } }, 'Code einfügen …'),
+    on ? h('button', { class: 'btn sm warn', onclick: async function () {
+      if (await ask('Verbindung mit ' + name + ' auf diesem Gerät trennen? Die Daten bleiben auf dem Gerät und in der Cloud.', [['Abbrechen', 0], ['Trennen', 1, 'warn']])) { cloudDisconnect(); draw(); }
+    } }, 'Trennen') : null));
+  box.appendChild(code); box.appendChild(codeGo);
+  box.appendChild(h('div', { class: 'note' }, 'Das Gerät meldet sich einmal an und bleibt verbunden' + (cur === 'google' ? ' (Google: Anmeldung nach etwa einer Stunde erneuern).' : cur === 'onedrive' ? ' (OneDrive: Anmeldung etwa täglich erneuern).' : '.') + ' Kommt die Anmeldung in einem anderen Fenster an (iPad-Home-Bildschirm-App), dort den Code kopieren und hier „Code einfügen“.'));
+  box.appendChild(h('div', { class: 'lbl' }, 'Abgleich'));
+  box.appendChild(segCtl([['auto', 'Automatisch (live)'], ['manual', 'Nur auf Knopfdruck']], S.cloudMode === 'manual' ? 'manual' : 'auto', function (v) { S.cloudMode = v; saveS(); updCloudUi(); draw(); if (v === 'auto' && cloudOn()) cloudSync(); }));
+  box.appendChild(h('div', { class: 'note' }, S.cloudMode === 'manual' ? 'Abgleich nur über ☁︎ oben oder ☰ → „Jetzt abgleichen“.' : 'Änderungen gehen nach wenigen Sekunden in die Cloud; Änderungen anderer Geräte erscheinen beim Öffnen und alle 15 Sekunden.'));
+  box.appendChild(h('div', { class: 'lbl' }, 'Datenbank in der Cloud'));
+  box.appendChild(segCtl([[false, 'Eine für alles'], [true, 'Übungen und Trainings getrennt']], !!S.cloudSplit, async function (v) { S.cloudSplit = v; saveS(); if (cloudOn()) { DB.kv.cloudLocal = {}; markKv('cloudLocal'); box.closest('.modal').remove(); await cloudOffer('Aufteilung der Cloud-Datenbank geändert. '); cloudSync(true); } else draw(); }));
+  var dbEx = h('input', { type: 'text', value: S.cloudDbEx || 'VB Training', style: 'flex:1;min-width:160px' });
+  var dbTr = h('input', { type: 'text', value: S.cloudDbTr || 'VB Training Trainings', style: 'flex:1;min-width:160px' });
+  var chName = async function () { S.cloudDbEx = dbEx.value.trim() || 'VB Training'; S.cloudDbTr = dbTr.value.trim() || 'VB Training Trainings'; saveS(); if (cloudOn()) { DB.kv.cloudLocal = {}; markKv('cloudLocal'); box.closest('.modal').remove(); await cloudOffer('Andere Cloud-Datenbank gewählt. '); cloudSync(true); } };
+  dbEx.addEventListener('change', chName); dbTr.addEventListener('change', chName);
+  box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' }, h('span', { class: 'muted' }, S.cloudSplit ? 'Übungen' : 'Name'), dbEx));
+  if (S.cloudSplit) box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' }, h('span', { class: 'muted' }, 'Trainings'), dbTr));
+  box.appendChild(h('div', { class: 'note' }, 'Alle Geräte mit gleichen Namen arbeiten mit denselben Daten. Ein neuer Name legt eine neue Datenbank an; die Daten dieses Geräts werden dorthin übernommen.'));
+  box.appendChild(h('div', { class: 'lbl' }, 'Hinweise'));
+  box.appendChild(segCtl([[true, 'Änderungen anderer Geräte melden'], [false, 'Nicht melden']], S.cloudNotify !== false, function (v) { S.cloudNotify = v; saveS(); draw(); }));
+  box.appendChild(h('div', { style: 'margin-top:6px' }, segCtl([[true, 'An Dateisicherung erinnern'], [false, 'Nicht erinnern']], S.fileRemind !== false, function (v) { S.fileRemind = v; saveS(); updMenuDot(); draw(); })));
+}
 function openSettings() {
   var ov = h('div', { class: 'modal' }), box = h('div', { class: 'mbox', style: 'max-height:90vh;overflow:auto' });
   function draw() {
@@ -2586,7 +2686,8 @@ function openSettings() {
     box.appendChild(h('div', { class: 'lbl' }, 'Dauer im Training festlegen'));
     box.appendChild(segCtl([['block', 'Je Block'], ['step', 'Je Übung']], stepMode() ? 'step' : 'block', function (v) { S.durMode = v; saveS(); draw(); render(); }));
     box.appendChild(h('div', { class: 'note' }, stepMode() ? 'Jede Übung (bzw. jede Gruppe paralleler Übungen) bekommt eine Dauer; die Blockdauer ist die Summe.' : 'Jeder Block bekommt eine Dauer; daraus werden die Uhrzeiten der Blöcke berechnet.') );
-    box.appendChild(h('div', { class: 'lbl' }, 'Speichern (☰ → Sichern)'));
+    cloudSettings(box, draw);
+    box.appendChild(h('div', { class: 'lbl' }, 'Sicherung als Datei (☰ → Sichern)'));
     box.appendChild(segCtl([['one', 'Alles in einer Datei'], ['split', 'Übungen und Trainings getrennt']], S.saveMode === 'split' ? 'split' : 'one', function (v) { S.saveMode = v; saveS(); draw(); updMenuDot(); }));
     box.appendChild(h('div', { class: 'note' }, S.saveMode === 'split' ? 'Zwei Dateien: vbtraining-uebungen-… (Übungsdatenbank) und vbtraining-trainings-… (Trainings).' : 'Eine Datei vbtraining-… mit Übungen, Trainings und Vorschlägen.'));
     box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' },
@@ -2618,7 +2719,7 @@ function openHelp() {
     '<li><b>∥ parallel</b> an einer Übung: Sie läuft gleichzeitig mit der Übung davor. Parallele Übungen bekommen einen blauen Rahmen und Unternummern (3.1, 3.2 …); bei Dauer je Übung gilt sie für die ganze Gruppe. Am besten das Feld angeben.</li>' +
     '<li><b>Trainingsphase</b> (optional): Aufwärmen, Einspielen, Grundtechnik, Taktik, Komplex oder Spiel. In der Übungsliste lässt sich danach filtern.</li>' +
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
-    '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte „In Datenbank aktualisieren“ oder „Als neue Variante speichern“ an. Ohne Klick bleibt die Änderung nur in diesem Training.</li>' +
+    '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte an: „In Datenbank aktualisieren“ (ersetzt die Übung), „Als Variante speichern …“ (zusätzliche Fassung mit Bezeichnung, z. B. „für 12 Spieler“; erscheint als „Titel – für 12 Spieler“) oder „Als neue Übung aufnehmen …“ (eigenständige Übung). Ohne Klick bleibt die Änderung nur in diesem Training. Dasselbe gibt es im Reiter Übungen beim Bearbeiten.</li>' +
     '<li><b>Organisatorisches / Vorab</b> (unter den Positionen, optional): Knopf aufklappen, dann Textfeld und/oder Handschriftfeld anlegen – für Punkte, die vor dem Training angesprochen werden. Erscheint beim Durchführen oben und im PDF; beim Kopieren eines Trainings wird es nicht übernommen.</li>' +
     '<li>Oben im Training: optional das <b>Team</b> (wird gelernt, Auswahl über ▾) und die <b>Ziele des Trainings</b>.</li>' +
     '<li>Ziele, Namen, Orte und Felder lernt die App. Vorschläge öffnen sich über den kleinen Pfeil <b>▾</b> als Liste; beim Tippen erscheinen passende Einträge. Vertippte oder überholte Einträge: <b>☰ → Vorschläge verwalten</b> (umbenennen – auf Wunsch überall – oder aus der Liste löschen).</li>' +
@@ -2637,7 +2738,17 @@ function openHelp() {
     '<li>Auf dem anderen Gerät: <b>☰ → Laden</b> und die Datei wählen. Laden ergänzt: Neueres bleibt erhalten, gelöschte Einträge werden auch dort gelöscht.</li>' +
     '<li><b>Training auf einem anderen Gerät geplant?</b> Dort <b>☰ → Trainings weitergeben</b>, Trainings ankreuzen und die Datei sichern bzw. teilen. Auf dem eigenen Gerät <b>☰ → Laden</b> und die Datei wählen: Die Trainings und ihre Übungen kommen dazu, gelöscht wird nichts. Alternativ <b>☰ → Laden → „Nur einzelne Trainings aus einer Datei“</b>: aus jeder Sicherung (auch einer Gesamtdatei des anderen Geräts) nur die angekreuzten Trainings übernehmen.</li>' +
     '<li>Regelmäßig sichern! Ein Punkt am ☰ erinnert, wenn länger nicht gesichert wurde. Wird die App gelöscht, sind die Daten auf dem Gerät weg.</li></ul>' +
-    '<h3>Datenschutz</h3><p>Alle Eingaben (Übungen, Trainings, Namen, Bilder) bleiben auf dem Gerät bzw. in den Dateien, die du selbst sicherst. Die App sendet nichts an einen Server. Die Seite wird bei GitHub gehostet; GitHub verarbeitet beim Aufruf technische Daten (z. B. IP-Adresse).</p>' +
+    '<h3>Cloud-Datenbank (Dropbox, OneDrive, Google Drive)</h3><ul>' +
+    '<li>☰ → Einstellungen → <b>Datenbank</b>: „Nur Gerät + Datei“ (wie bisher) oder ein Cloud-Speicher. Dann gleichen sich alle verbundenen Geräte ab: Änderungen gehen nach wenigen Sekunden in die Cloud, andere Geräte zeigen sie beim Öffnen bzw. nach spätestens 15 Sekunden. Bei Änderungen am selben Eintrag gilt der neuere Stand.</li>' +
+    '<li>Einmalig beim Anbieter eine „App“ anlegen und den Schlüssel in den Einstellungen eintragen (auf jedem Gerät). Weiterleitungs-Adresse: <b>' + redirectUri() + '</b><br>' +
+    '<b>Dropbox</b> (empfohlen): dropbox.com/developers/apps → Create app → Scoped access → App folder → Name. Reiter Permissions: files.metadata.read, files.content.read, files.content.write → Submit. Reiter Settings: Redirect URI eintragen → „App key“ kopieren.<br>' +
+    '<b>OneDrive</b>: entra.microsoft.com → App-Registrierungen → Neue Registrierung → Kontotypen „beliebiges Verzeichnis und persönliche Microsoft-Konten“ → Umleitungs-URI: Plattform „Single-Page-Anwendung (SPA)“ → API-Berechtigungen: Microsoft Graph, delegiert: Files.ReadWrite.AppFolder, offline_access → „Anwendungs-ID (Client)“ kopieren.<br>' +
+    '<b>Google Drive</b>: console.cloud.google.com → Projekt → Google Drive API aktivieren → OAuth-Zustimmungsbildschirm (extern, Testnutzer: eigene Adresse, Bereich drive.appdata) → Anmeldedaten → OAuth-Client „Webanwendung“, JavaScript-Ursprung ' + location.origin + ', Weiterleitungs-URI wie oben → Client-ID kopieren.</li>' +
+    '<li>Die Daten liegen im App-Ordner des Anbieters (Dropbox/OneDrive: Ordner „Apps“; Google: versteckter App-Bereich). Je Übung und Training eine Datei.</li>' +
+    '<li>Das Symbol <b>☁︎</b> oben zeigt den Stand (grün = abgeglichen, blinkt = läuft, orange = Anmeldung/Fehler) und gleicht beim Antippen sofort ab.</li>' +
+    '<li><b>Vorhandene Daten übernehmen:</b> Beim Verbinden (und bei einer anderen Cloud-Datenbank) fragt die App, ob die Trainings und Übungen dieses Geräts in die Cloud sollen: alle, eine Auswahl oder keine. Nicht übernommene sind mit „nur auf diesem Gerät“ markiert; ☰ → „In die Cloud übernehmen …“ holt sie später nach. So kann man erst mit einem Gerät starten und später alles in die Cloud bringen.</li>' +
+    '<li>Ohne Internet arbeitet die App normal weiter und gleicht später ab. Sichern und Laden per Datei bleibt zusätzlich möglich.</li></ul>' +
+    '<h3>Datenschutz</h3><p>Alle Eingaben (Übungen, Trainings, Namen, Bilder) bleiben auf dem Gerät bzw. in den Dateien, die du selbst sicherst. Nur wenn eine Cloud-Datenbank verbunden ist, gehen sie in dein eigenes Konto bei diesem Anbieter (Dropbox, Microsoft oder Google). Sonst sendet die App nichts an einen Server. Die Seite wird bei GitHub gehostet; GitHub verarbeitet beim Aufruf technische Daten (z. B. IP-Adresse).</p>' +
     '<h3>Haftungsausschluss</h3><p>Die App wird ohne Gewähr bereitgestellt. Für Datenverluste oder Fehler wird keine Haftung übernommen. Bitte regelmäßig sichern.</p>' +
     '<h3>Über diese App</h3><p>Private, kostenlose App ohne Werbung. Kontakt und Rückmeldungen: github.com/app-laden</p>' }));
   document.body.appendChild(ov);
@@ -2665,6 +2776,459 @@ function openHelp() {
 })();
 
 /* ================= Start ================= */
+/* ================= Cloud-Datenbank (Dropbox, OneDrive, Google Drive) =================
+   Jede Übung / jedes Training ist eine eigene Datei im App-Ordner des Anbieters:
+     <db>__ex__<id>.json, <db>__tr__<id>.json, <db>__meta__deleted.json, <db>__meta__lex.json
+   Abgleich: Neueres (Feld "updated") gewinnt; Löschungen über Grabsteine (DB.kv.deleted). */
+var CS = { busy: false, again: false, kickT: 0, status: '', err: '', progress: '', applying: false, pendingRender: false, lastAct: 0 };
+var CLOUD_NAMES = { dropbox: 'Dropbox', onedrive: 'OneDrive', google: 'Google Drive' };
+function cloudErr(msg, status, auth) { var e = new Error(msg); e.status = status || 0; e.auth = !!auth; return e; }
+function b64url(buf) { var b = new Uint8Array(buf), s = ''; for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function randStr(n) { var a = new Uint8Array(n); crypto.getRandomValues(a); return b64url(a).slice(0, n); }
+async function pkcePair() { var v = randStr(64); var d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v)); return { v: v, c: b64url(d) }; }
+function redirectUri() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+function qs(o) { return Object.keys(o).filter(function (k) { return o[k] != null; }).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(o[k]); }).join('&'); }
+function strHash(s) { var h1 = 5381, i = s.length; while (i) h1 = (h1 * 33) ^ s.charCodeAt(--i); return (h1 >>> 0).toString(36) + ':' + s.length; }
+function safeBase(name) { var s = String(name || '').trim().toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); return s || 'vbtraining'; }
+async function tokenPost(url, params) {
+  var r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: qs(params) });
+  var j = {}; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw cloudErr('Anmeldung: ' + (j.error_description || j.error || r.status), r.status, r.status === 400 || r.status === 401);
+  return { access: j.access_token, refresh: j.refresh_token || null, exp: Date.now() + (+j.expires_in || 3600) * 1000 };
+}
+async function cloudToken(force) {
+  var a = DB.kv.cloudAuth;
+  if (!a) throw cloudErr('Nicht verbunden', 0, true);
+  if (!force && a.exp - 60000 > Date.now()) return a.access;
+  if (!a.refresh) throw cloudErr('Anmeldung abgelaufen', 401, true);
+  var t = await CLOUD_P[a.prov].refresh(a.key, a.refresh);
+  a.access = t.access; a.exp = t.exp; if (t.refresh) a.refresh = t.refresh;
+  markKv('cloudAuth'); flush();
+  return a.access;
+}
+// fetch mit Anmeldung; bei 401 einmal neues Token holen
+async function cfetch(url, opt, retried) {
+  opt = opt || {}; var o = Object.assign({}, opt); o.headers = Object.assign({}, opt.headers || {});
+  o.headers.Authorization = 'Bearer ' + (await cloudToken(retried));
+  var r;
+  try { r = await fetch(url, o); } catch (e) { throw cloudErr('Keine Verbindung zum Anbieter', 0); }
+  if (r.status === 401) { if (!retried) return cfetch(url, opt, true); throw cloudErr('Anmeldung abgelaufen', 401, true); }
+  return r;
+}
+async function okJson(r, what) {
+  if (!r.ok) { var t = ''; try { t = await r.text(); } catch (e) {} throw cloudErr((what || 'Fehler') + ' (' + r.status + ') ' + t.slice(0, 160), r.status); }
+  var s = await r.text(); return s ? JSON.parse(s) : {};
+}
+
+var CLOUD_P = {
+  dropbox: {
+    authUrl: function (key, c, state) { return 'https://www.dropbox.com/oauth2/authorize?' + qs({ client_id: key, response_type: 'code', code_challenge: c, code_challenge_method: 'S256', token_access_type: 'offline', redirect_uri: redirectUri(), state: state }); },
+    exchange: function (key, code, v) { return tokenPost('https://api.dropboxapi.com/oauth2/token', { code: code, grant_type: 'authorization_code', code_verifier: v, client_id: key, redirect_uri: redirectUri() }); },
+    refresh: function (key, rt) { return tokenPost('https://api.dropboxapi.com/oauth2/token', { grant_type: 'refresh_token', refresh_token: rt, client_id: key }); },
+    rpc: async function (ep, arg) { return okJson(await cfetch('https://api.dropboxapi.com/2/' + ep, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(arg) }), 'Dropbox'); },
+    list: async function () {
+      var out = [], r = await this.rpc('files/list_folder', { path: '', limit: 2000 });
+      for (;;) {
+        r.entries.forEach(function (e) { if (e['.tag'] === 'file') out.push({ name: e.name, rev: e.rev }); });
+        if (!r.has_more) break;
+        r = await this.rpc('files/list_folder/continue', { cursor: r.cursor });
+      }
+      return out;
+    },
+    get: async function (name) {
+      var r = await cfetch('https://content.dropboxapi.com/2/files/download', { method: 'POST', headers: { 'Dropbox-API-Arg': JSON.stringify({ path: '/' + name }) } });
+      if (!r.ok) throw cloudErr('Dropbox: Laden fehlgeschlagen (' + r.status + ')', r.status);
+      return r.text();
+    },
+    put: async function (name, text) {
+      var j = await okJson(await cfetch('https://content.dropboxapi.com/2/files/upload', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Dropbox-API-Arg': JSON.stringify({ path: '/' + name, mode: 'overwrite', mute: true }) }, body: new Blob([text]) }), 'Dropbox: Hochladen');
+      return j.rev;
+    },
+    del: async function (name) {
+      var r = await cfetch('https://api.dropboxapi.com/2/files/delete_v2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: '/' + name }) });
+      if (!r.ok && r.status !== 409) throw cloudErr('Dropbox: Löschen fehlgeschlagen (' + r.status + ')', r.status);
+    }
+  },
+  onedrive: {
+    G: 'https://graph.microsoft.com/v1.0/me/drive/',
+    scope: 'Files.ReadWrite.AppFolder offline_access',
+    authUrl: function (key, c, state) { return 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?' + qs({ client_id: key, response_type: 'code', response_mode: 'query', redirect_uri: redirectUri(), scope: this.scope, code_challenge: c, code_challenge_method: 'S256', state: state }); },
+    exchange: function (key, code, v) { return tokenPost('https://login.microsoftonline.com/common/oauth2/v2.0/token', { client_id: key, grant_type: 'authorization_code', code: code, redirect_uri: redirectUri(), code_verifier: v, scope: this.scope }); },
+    refresh: function (key, rt) { return tokenPost('https://login.microsoftonline.com/common/oauth2/v2.0/token', { client_id: key, grant_type: 'refresh_token', refresh_token: rt, scope: this.scope }); },
+    list: async function () {
+      var out = [], url = this.G + 'special/approot/children?$top=999';
+      while (url) {
+        var j = await okJson(await cfetch(url), 'OneDrive');
+        (j.value || []).forEach(function (x) { if (x.file) out.push({ name: x.name, rev: x.cTag || x.eTag, id: x.id, dl: x['@microsoft.graph.downloadUrl'] }); });
+        url = j['@odata.nextLink'] || null;
+      }
+      return out;
+    },
+    get: async function (name, f) {
+      var dl = f && f.dl;
+      if (!dl) { var j = await okJson(await cfetch(this.G + 'special/approot:/' + encodeURIComponent(name) + '?$select=id,@microsoft.graph.downloadUrl'), 'OneDrive'); dl = j['@microsoft.graph.downloadUrl']; }
+      var r = await fetch(dl); if (!r.ok) throw cloudErr('OneDrive: Laden fehlgeschlagen (' + r.status + ')', r.status);
+      return r.text();
+    },
+    put: async function (name, text) {
+      var j = await okJson(await cfetch(this.G + 'special/approot:/' + encodeURIComponent(name) + ':/content', { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: new Blob([text]) }), 'OneDrive: Hochladen');
+      return j.cTag || j.eTag;
+    },
+    del: async function (name, f) {
+      var url = f && f.id ? this.G + 'items/' + f.id : this.G + 'special/approot:/' + encodeURIComponent(name);
+      var r = await cfetch(url, { method: 'DELETE' });
+      if (!r.ok && r.status !== 404) throw cloudErr('OneDrive: Löschen fehlgeschlagen (' + r.status + ')', r.status);
+    }
+  },
+  google: {
+    D: 'https://www.googleapis.com/drive/v3/files', U: 'https://www.googleapis.com/upload/drive/v3/files',
+    ids: {},
+    implicit: true,
+    authUrl: function (key, c, state) { return 'https://accounts.google.com/o/oauth2/v2/auth?' + qs({ client_id: key, redirect_uri: redirectUri(), response_type: 'token', scope: 'https://www.googleapis.com/auth/drive.appdata', include_granted_scopes: 'true', state: state }); },
+    refresh: async function () { throw cloudErr('Google-Anmeldung abgelaufen', 401, true); },
+    list: async function () {
+      var out = [], tok = null, self = this; self.ids = {};
+      do {
+        var j = await okJson(await cfetch(this.D + '?' + qs({ spaces: 'appDataFolder', pageSize: 1000, fields: 'nextPageToken,files(id,name,version)', pageToken: tok })), 'Google Drive');
+        (j.files || []).forEach(function (x) {
+          var prev = self.ids[x.name];
+          if (prev && +prev.version > +x.version) return;   // doppelte Namen: neueste Fassung
+          self.ids[x.name] = x;
+        });
+        tok = j.nextPageToken;
+      } while (tok);
+      Object.keys(self.ids).forEach(function (n) { var x = self.ids[n]; out.push({ name: n, rev: String(x.version), id: x.id }); });
+      return out;
+    },
+    get: async function (name, f) {
+      var id = (f && f.id) || (this.ids[name] && this.ids[name].id);
+      var r = await cfetch(this.D + '/' + id + '?alt=media'); if (!r.ok) throw cloudErr('Google Drive: Laden fehlgeschlagen (' + r.status + ')', r.status);
+      return r.text();
+    },
+    put: async function (name, text, f) {
+      var id = (f && f.id) || (this.ids[name] && this.ids[name].id), blob = new Blob([text]), j;
+      if (blob.size > 4500000) {   // großer Inhalt: fortsetzbares Hochladen
+        var r0 = await cfetch(id ? this.U + '/' + id + '?uploadType=resumable&fields=id,version' : this.U + '?uploadType=resumable&fields=id,version',
+          { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': 'application/json' }, body: JSON.stringify(id ? {} : { name: name, parents: ['appDataFolder'] }) });
+        if (!r0.ok) await okJson(r0, 'Google Drive: Hochladen');
+        var loc = r0.headers.get('Location'); if (!loc) throw cloudErr('Google Drive: keine Upload-Adresse', 0);
+        var r1 = await fetch(loc, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: blob });
+        j = await okJson(r1, 'Google Drive: Hochladen');
+      } else if (id) {
+        j = await okJson(await cfetch(this.U + '/' + id + '?uploadType=media&fields=id,version', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: blob }), 'Google Drive: Hochladen');
+      } else {
+        var bnd = 'vbt' + uid();
+        var body = new Blob(['--' + bnd + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify({ name: name, parents: ['appDataFolder'] }) + '\r\n--' + bnd + '\r\nContent-Type: application/json\r\n\r\n', blob, '\r\n--' + bnd + '--']);
+        j = await okJson(await cfetch(this.U + '?uploadType=multipart&fields=id,version', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + bnd }, body: body }), 'Google Drive: Hochladen');
+      }
+      this.ids[name] = { id: j.id, version: j.version };
+      return String(j.version);
+    },
+    del: async function (name, f) {
+      var id = (f && f.id) || (this.ids[name] && this.ids[name].id); if (!id) return;
+      var r = await cfetch(this.D + '/' + id, { method: 'DELETE' });
+      if (!r.ok && r.status !== 404) throw cloudErr('Google Drive: Löschen fehlgeschlagen (' + r.status + ')', r.status);
+      delete this.ids[name];
+    }
+  }
+};
+if (window.__cloudMock) CLOUD_P.mock = window.__cloudMock;   // nur für Tests
+
+function cloudLocal() { if (!DB.kv.cloudLocal) DB.kv.cloudLocal = {}; return DB.kv.cloudLocal; }
+function cloudLocalTag(id) { return typeof cloudOn === 'function' && cloudOn() && DB.kv.cloudLocal && DB.kv.cloudLocal[id] ? h('span', { class: 'badge', style: 'background:#8a8a84', title: 'Nicht in der Cloud-Datenbank' }, 'nur auf diesem Gerät') : null; }
+function pickList(items, pre, onToggle) {
+  var sel = {}; items.forEach(function (x) { sel[x.id] = pre ? pre.indexOf(x.id) >= 0 : true; });
+  var box = h('div'), cnt = h('span', { class: 'muted' }), cbs = {};
+  var upd = function () { cnt.textContent = items.filter(function (x) { return sel[x.id]; }).length + ' von ' + items.length; };
+  items.forEach(function (x) {
+    var cb = h('input', { type: 'checkbox', style: 'width:22px;height:22px;flex:none' }); cb.checked = sel[x.id]; cbs[x.id] = cb;
+    cb.addEventListener('change', function () { sel[x.id] = cb.checked; upd(); if (onToggle) onToggle(x.id, cb.checked); });
+    box.appendChild(h('label', { style: 'display:flex;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid #eee' }, cb,
+      h('div', { style: 'flex:1' }, h('div', null, x.label), x.sub ? h('div', { class: 'note' }, x.sub) : null)));
+  });
+  var all = function (v) { items.forEach(function (x) { sel[x.id] = v; cbs[x.id].checked = v; }); upd(); };
+  var wrap = h('div', null, h('div', { class: 'row', style: 'margin:6px 0' }, h('button', { class: 'btn sm', onclick: function () { all(true); } }, 'Alle'), h('button', { class: 'btn sm', onclick: function () { all(false); } }, 'Keine'), cnt),
+    h('div', { style: 'max-height:30vh;overflow:auto;border:1px solid #e1e1db;border-radius:10px;padding:0 8px;background:#fff' }, box));
+  wrap.selected = function () { return items.filter(function (x) { return sel[x.id]; }).map(function (x) { return x.id; }); };
+  wrap.set = function (id, v) { if (cbs[id]) { sel[id] = v; cbs[id].checked = v; upd(); } };
+  upd();
+  return wrap;
+}
+// Daten dieses Geräts, die noch nicht in der Cloud-Datenbank sind: fragen, ob/welche übernommen werden
+async function cloudOffer(intro, onlyLocal) {
+  if (!cloudOn()) return;
+  CS.hold = true;
+  var L = {};
+  try { (await CLOUD_P[S.cloud].list()).forEach(function (f) { L[f.name] = 1; }); }
+  catch (e) { CS.hold = false; toast('Cloud: ' + e.message, 5000); return; }
+  var B = cloudBases(), loc = cloudLocal();
+  var exC = Array.from(DB.ex.values()).filter(function (e) { return !L[cloudPath(B.ex, 'ex', e.id)] && (!onlyLocal || loc[e.id]); });
+  var trC = sortTr(Array.from(DB.tr.values()).filter(function (t) { return !L[cloudPath(B.tr, 'tr', t.id)] && (!onlyLocal || loc[t.id]); }));
+  if (!exC.length && !trC.length) { CS.hold = false; if (onlyLocal) toast('Alles ist bereits in der Cloud'); return; }
+  var dbName = S.cloudSplit ? '„' + (S.cloudDbEx || 'VB Training') + '“ / „' + (S.cloudDbTr || '') + '“' : '„' + (S.cloudDbEx || 'VB Training') + '“';
+  var ch = await ask((intro || '') + 'Auf diesem Gerät ' + (trC.length === 1 ? 'ist 1 Training' : 'sind ' + trC.length + ' Trainings') + ' und ' + exC.length + ' Übung(en), die noch nicht in der Cloud-Datenbank ' + dbName + ' sind. Sollen sie übernommen werden?',
+    [['Alle übernehmen', 'all', 'pri'], ['Auswählen …', 'pick'], ['Keine – nur auf diesem Gerät', 'none']]);
+  var selEx = [], selTr = [];
+  if (ch === 'all') { selEx = exC.map(function (e) { return e.id; }); selTr = trC.map(function (t) { return t.id; }); }
+  else if (ch === 'pick') {
+    var r = await new Promise(function (res) {
+      var exIds = {}; exC.forEach(function (e) { exIds[e.id] = 1; });
+      var le = pickList(exC.map(function (e) { return { id: e.id, label: exLabel(e), sub: (e.goals || []).join(', ') }; }), []);
+      var lt = pickList(trC.map(function (t) { var n = 0; t.blocks.forEach(function (b) { n += b.items.length; }); return { id: t.id, label: trTitle(t), sub: n + ' Übung(en)' }; }), [], function (id, v) {
+        if (!v) return; var t = DB.tr.get(id); t.blocks.forEach(function (b) { b.items.forEach(function (it) { if (exIds[it.ex.id]) le.set(it.ex.id, true); }); });
+      });
+      var ov = h('div', { class: 'modal' }), done = function (v) { ov.remove(); res(v); };
+      ov.appendChild(h('div', { class: 'mbox', style: 'max-height:92vh;overflow:auto' },
+        h('h2', { style: 'margin-top:0' }, 'In die Cloud übernehmen'),
+        trC.length ? h('div', { class: 'lbl' }, 'Trainings (' + trC.length + ')') : null, trC.length ? lt : null,
+        exC.length ? h('div', { class: 'lbl' }, 'Übungen aus der Datenbank (' + exC.length + ')') : null, exC.length ? le : null,
+        h('div', { class: 'note', style: 'margin-top:6px' }, 'Wird ein Training angekreuzt, werden die darin verwendeten Übungen mit angekreuzt. Nicht Angekreuztes bleibt nur auf diesem Gerät (☰ → „In die Cloud übernehmen …“ holt es später nach).'),
+        h('div', { class: 'mbtns', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: function () { done(null); } }, 'Abbrechen'), h('button', { class: 'btn pri', onclick: function () { done([le.selected(), lt.selected()]); } }, 'Übernehmen'))));
+      document.body.appendChild(ov);
+    });
+    if (r) { selEx = r[0]; selTr = r[1]; }
+  }
+  exC.forEach(function (e) { if (selEx.indexOf(e.id) >= 0) delete loc[e.id]; else loc[e.id] = 1; });
+  trC.forEach(function (t) { if (selTr.indexOf(t.id) >= 0) delete loc[t.id]; else loc[t.id] = 1; });
+  markKv('cloudLocal'); flush();
+  CS.hold = false;
+  render();
+  if (selEx.length || selTr.length) toast((selTr.length + selEx.length) + ' Einträge werden in die Cloud übernommen …', 3000);
+}
+function cloudOn() { var a = DB.kv.cloudAuth; return !!(S.cloud && S.cloud !== 'none' && a && a.prov === S.cloud && CLOUD_P[S.cloud]); }
+function cloudBases() { var e = safeBase(S.cloudDbEx || 'VB Training'); return { ex: e, tr: S.cloudSplit ? safeBase(S.cloudDbTr || 'VB Training Trainings') : e }; }
+function cloudState() {
+  var s = DB.kv.cloudState;
+  if (!s || s.prov !== S.cloud) { s = DB.kv.cloudState = { prov: S.cloud, known: {}, meta: {}, last: 0, dirty: false }; markKv('cloudState'); }
+  return s;
+}
+function isBusy() {
+  if (inp || penDown || Date.now() - lastPenUp < 4000 || Date.now() - CS.lastAct < 3000) return true;
+  var a = document.activeElement;
+  if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return true;
+  return !!document.querySelector('.modal,.viewer,.tview');
+}
+['pointerdown', 'keydown'].forEach(function (t) { document.addEventListener(t, function () { CS.lastAct = Date.now(); }, true); });
+function visibleTrId() { return st.view === 'run' ? st.runId : st.view === 'plan' ? (st.picker ? st.picker.tr : st.trId) : null; }
+
+function cloudKick() {
+  if (!cloudOn() || CS.applying) return;
+  var s = cloudState(); if (!s.dirty) { s.dirty = true; markKv('cloudState'); }
+  if (S.cloudMode === 'manual') { updCloudUi(); return; }
+  clearTimeout(CS.kickT); CS.kickT = setTimeout(function () { cloudSync(); }, 2500);
+}
+function applyTombstones() {
+  var n = 0, del = DB.kv.deleted || {};
+  Object.keys(del).forEach(function (id) {
+    var e = DB.ex.get(id); if (e && (e.updated || 0) <= del[id]) { DB.ex.delete(id); idbDel('ex', id); n++; }
+    var r = DB.tr.get(id); if (r && (r.updated || 0) <= del[id]) { DB.tr.delete(id); idbDel('tr', id); n++; }
+  });
+  return n;
+}
+
+async function cloudSync(manual) {
+  if (!cloudOn()) return null;
+  if (CS.hold) return null;
+  if (CS.busy) { CS.again = true; return null; }
+  if (!navigator.onLine) { CS.status = 'offline'; updCloudUi(); if (manual) toast('Keine Internetverbindung'); return null; }
+  CS.busy = true; CS.err = ''; CS.progress = ''; updCloudUi();
+  var P = CLOUD_P[S.cloud], s = cloudState(), B = cloudBases(), res = { ex: 0, tr: 0, del: 0, up: 0, deferred: false, touched: [] }, held = {};
+  var bases = B.ex === B.tr ? [B.ex] : [B.ex, B.tr];
+  var kinds = [['ex', B.ex, DB.ex], ['tr', B.tr, DB.tr]];
+  try {
+    flush(); CS.applying = true;
+    var list = await P.list(), L = {};
+    list.forEach(function (f) { L[f.name] = f; });
+    // 1. Meta (Löschungen, Vorschläge) holen
+    for (var bi = 0; bi < bases.length; bi++) {
+      for (var mi = 0; mi < 2; mi++) {
+        var mk = mi ? 'lex' : 'deleted', mn = bases[bi] + '__meta__' + mk + '.json', mf = L[mn], mm = s.meta[mn];
+        if (mf && (!mm || mm.rev !== mf.rev)) {
+          var mo = JSON.parse(await P.get(mn, mf) || '{}');
+          if (mk === 'deleted') { Object.keys(mo).forEach(function (id) { if (!DB.kv.deleted[id] || DB.kv.deleted[id] < mo[id]) DB.kv.deleted[id] = mo[id]; }); markKv('deleted'); }
+          else { mergeLex(DB.kv.lex, mo); markKv('lex'); }
+          s.meta[mn] = { rev: mf.rev, hash: mm ? mm.hash : '' };
+        }
+      }
+    }
+    res.del += applyTombstones();
+    var busyTr = isBusy() ? visibleTrId() : null;
+    // 2. Geänderte Einträge holen
+    for (var ki = 0; ki < 2; ki++) {
+      var kind = kinds[ki][0], pre = kinds[ki][1] + '__' + kind + '__', map = kinds[ki][2];
+      var names = Object.keys(L).filter(function (n) { return n.indexOf(pre) === 0 && /\.json$/.test(n); });
+      for (var ni = 0; ni < names.length; ni++) {
+        var name = names[ni], f = L[name], k = s.known[name], id = name.slice(pre.length, -5);
+        if (k && k.rev === f.rev) continue;
+        if (kind === 'tr' && id === busyTr) { res.deferred = true; held[name] = 1; continue; }   // gerade in Bearbeitung: später
+        CS.progress = 'lädt ' + (ni + 1) + '/' + names.length; updCloudUi();
+        var rec = JSON.parse(await P.get(name, f));
+        var tomb = DB.kv.deleted[id], loc = map.get(id);
+        if (DB.kv.cloudLocal && DB.kv.cloudLocal[id]) { delete DB.kv.cloudLocal[id]; markKv('cloudLocal'); }
+        if (!(tomb && tomb >= rec.updated) && (!loc || (rec.updated || 0) > (loc.updated || 0))) {
+          rec = kind === 'ex' ? normEx(rec) : normTr(rec);
+          map.set(id, rec); idbPut(kind, rec); res[kind]++; res.touched.push(id);
+        }
+        s.known[name] = { rev: f.rev, upd: rec.updated || 0 };
+      }
+    }
+    // 3. Eigene Änderungen hochladen
+    var todo = [];
+    kinds.forEach(function (kd) {
+      kd[2].forEach(function (rec) {
+        var name = cloudPath(kd[1], kd[0], rec.id), k = s.known[name];
+        if (held[name]) return;   // Cloud hat eine neuere Fassung, die wir noch nicht geholt haben
+        if (DB.kv.cloudLocal && DB.kv.cloudLocal[rec.id] && !L[name]) return;   // bleibt nur auf diesem Gerät
+        if (!L[name] || !k || (rec.updated || 0) > (k.upd || 0)) todo.push([name, rec]);
+      });
+    });
+    for (var ti = 0; ti < todo.length; ti++) {
+      CS.progress = 'sendet ' + (ti + 1) + '/' + todo.length; updCloudUi();
+      var rc = todo[ti][1], u = rc.updated || 0, body = JSON.stringify(rc);
+      var rev = await P.put(todo[ti][0], body, L[todo[ti][0]]);
+      s.known[todo[ti][0]] = { rev: rev, upd: u }; res.up++;
+    }
+    // 4. Gelöschtes auch in der Cloud löschen
+    for (var kj = 0; kj < 2; kj++) {
+      var pre2 = kinds[kj][1] + '__' + kinds[kj][0] + '__', map2 = kinds[kj][2];
+      var dn = Object.keys(L).filter(function (n) { return n.indexOf(pre2) === 0; });
+      for (var di = 0; di < dn.length; di++) {
+        var id2 = dn[di].slice(pre2.length, -5), t2 = DB.kv.deleted[id2], k2 = s.known[dn[di]];
+        if (t2 && !map2.has(id2) && (!k2 || t2 >= (k2.upd || 0))) { await P.del(dn[di], L[dn[di]]); delete s.known[dn[di]]; }
+      }
+    }
+    // 5. Meta hochladen, wenn sich etwas geändert hat
+    for (var bj = 0; bj < bases.length; bj++) {
+      var metas = [['deleted', JSON.stringify(DB.kv.deleted || {})], ['lex', JSON.stringify(DB.kv.lex || {})]];
+      for (var mj = 0; mj < 2; mj++) {
+        var nm = bases[bj] + '__meta__' + metas[mj][0] + '.json', hs = strHash(metas[mj][1]), cur = s.meta[nm];
+        if (!L[nm] || !cur || cur.hash !== hs) { var rv = await P.put(nm, metas[mj][1], L[nm]); s.meta[nm] = { rev: rv, hash: hs }; }
+      }
+    }
+    // Einträge, die es in der Cloud nicht mehr gibt, vergessen
+    Object.keys(s.known).forEach(function (n) { if (!L[n] && !todo.some(function (t) { return t[0] === n; })) delete s.known[n]; });
+    s.last = Date.now(); s.dirty = res.deferred; markKv('cloudState');
+    CS.status = 'ok';
+  } catch (e) {
+    CS.status = e.auth ? 'auth' : 'err'; CS.err = e.message || String(e);
+    if (manual || e.auth) toast((e.auth ? 'Cloud: Anmeldung nötig – ' : 'Cloud: ') + CS.err, 5000);
+  }
+  CS.applying = false; flush();
+  CS.busy = false; CS.progress = ''; updCloudUi();
+  if (res.ex || res.tr || res.del) cloudApplied(res);
+  if (res.deferred) setTimeout(function () { cloudSync(); }, 5000);
+  if (CS.again) { CS.again = false; setTimeout(function () { cloudSync(); }, 300); }
+  if (manual && CS.status === 'ok') toast('Abgeglichen' + (res.up ? ' · ' + res.up + ' gesendet' : '') + ((res.ex || res.tr) ? ' · ' + (res.ex + res.tr) + ' empfangen' : ''));
+  return res;
+}
+function cloudPath(base, kind, id) { return base + '__' + kind + '__' + id + '.json'; }
+function cloudApplied(res) {
+  UNDO = []; REDO = []; updUndo();
+  // Ansicht auf Daten, die es nicht mehr gibt?
+  if (st.trId && !DB.tr.get(st.trId)) st.trId = null;
+  if (st.runId && !DB.tr.get(st.runId)) st.runId = null;
+  if (!isBusy()) { CS.pendingRender = false; $('#cloudbar').style.display = 'none'; render(); }
+  else { CS.pendingRender = true; $('#cloudbar').style.display = 'block'; }
+  if (S.cloudNotify !== false) {
+    var p = [];
+    if (res.tr) p.push(res.tr + ' Training' + (res.tr > 1 ? 's' : ''));
+    if (res.ex) p.push(res.ex + ' Übung' + (res.ex > 1 ? 'en' : ''));
+    if (res.del) p.push(res.del + ' gelöscht');
+    toast('Von einem anderen Gerät: ' + p.join(', '), 4000);
+  }
+}
+function updCloudUi() {
+  var el = $('#cloudInd'); if (!el) return;
+  var on = cloudOn();
+  el.style.display = on || (S.cloud && S.cloud !== 'none') ? 'flex' : 'none';
+  var cls = !on ? 'warn' : CS.busy ? 'busy' : CS.status === 'auth' || CS.status === 'err' ? 'warn' : CS.status === 'offline' ? 'off' : (cloudState().dirty && S.cloudMode === 'manual') ? 'pend' : 'ok';
+  el.className = 'ib cloud ' + cls;
+  el.title = cloudLine();
+  updMenuDot();
+}
+function cloudLine() {
+  var n = CLOUD_NAMES[S.cloud] || 'Cloud';
+  if (!cloudOn()) return n + ': nicht verbunden';
+  if (CS.busy) return n + ': Abgleich läuft' + (CS.progress ? ' (' + CS.progress + ')' : ' …');
+  if (CS.status === 'auth') return n + ': Anmeldung nötig';
+  if (CS.status === 'err') return n + ': Fehler – ' + CS.err;
+  if (CS.status === 'offline') return n + ': offline – wird nachgeholt';
+  var s = cloudState(), t = s.last ? new Date(s.last) : null;
+  return n + (t ? ': abgeglichen ' + (Date.now() - s.last < 864e5 ? t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : fmtDate(t.toISOString().slice(0, 10))) : ': noch nicht abgeglichen') + (s.dirty ? ' · Änderungen offen' : '');
+}
+
+/* ----- Anmelden ----- */
+async function cloudConnect(prov) {
+  var key = ((S.cloudKeys || {})[prov] || '').trim();
+  if (!key) { toast('Bitte zuerst den App-Schlüssel / die Client-ID eintragen'); return; }
+  if (!window.crypto || !crypto.subtle) { toast('Dieser Browser unterstützt die Anmeldung nicht'); return; }
+  var pk = await pkcePair(), state = randStr(24);
+  try { localStorage.setItem('vbtrain-auth', JSON.stringify({ p: prov, v: pk.v, state: state, key: key, t: Date.now() })); } catch (e) {}
+  flush();
+  location.href = CLOUD_P[prov].authUrl(key, pk.c, state);
+}
+async function cloudFinish(pend, pl) {
+  var P = CLOUD_P[pend.p], auth;
+  try {
+    if (pl.token) auth = { access: pl.token, refresh: null, exp: Date.now() + (+pl.exp || 3600) * 1000 };
+    else auth = await P.exchange(pend.key, pl.code, pend.v);
+  } catch (e) { ask('Anmeldung bei ' + CLOUD_NAMES[pend.p] + ' fehlgeschlagen: ' + e.message, [['OK', 1, 'pri']]); return; }
+  auth.prov = pend.p; auth.key = pend.key;
+  var first = !DB.kv.cloudState || DB.kv.cloudState.prov !== pend.p || !DB.kv.cloudState.last;
+  DB.kv.cloudAuth = auth; markKv('cloudAuth');
+  S.cloud = pend.p; saveS();
+  try { localStorage.removeItem('vbtrain-auth'); } catch (e) {}
+  flush(); CS.status = ''; updCloudUi();
+  await cloudOffer('Verbunden mit ' + CLOUD_NAMES[pend.p] + '. ');
+  toast('Abgleich läuft …', 3000);
+  var r = await cloudSync(true);
+  if (r && first) ask('Verbunden mit ' + CLOUD_NAMES[pend.p] + '. Erster Abgleich: ' + r.up + ' Einträge hochgeladen, ' + (r.ex + r.tr) + ' aus der Cloud übernommen.' + (Object.keys(cloudLocal()).length ? ' ' + Object.keys(cloudLocal()).length + ' Einträge bleiben nur auf diesem Gerät.' : '') + (S.cloudMode === 'manual' ? ' Abgleich nur auf Knopfdruck (☰ → Jetzt abgleichen).' : ' Ab jetzt wird automatisch abgeglichen.'), [['OK', 1, 'pri']]);
+}
+function cloudCodeString(pl) { return 'VBT-' + btoa(unescape(encodeURIComponent(JSON.stringify(pl)))); }
+function cloudPasteCode(str) {
+  var pl;
+  try { pl = JSON.parse(decodeURIComponent(escape(atob(String(str).trim().replace(/^VBT-/, ''))))); } catch (e) { toast('Das ist kein gültiger Anmelde-Code'); return; }
+  var pend = null; try { pend = JSON.parse(localStorage.getItem('vbtrain-auth') || 'null'); } catch (e) {}
+  if (!pend || pend.state !== pl.state) { ask('Der Code passt nicht zu einer Anmeldung auf diesem Gerät. Bitte hier „Verbinden“ erneut tippen und den neuen Code verwenden.', [['OK', 1, 'pri']]); return; }
+  cloudFinish(pend, pl);
+}
+async function cloudHandleRedirect() {
+  var q = new URLSearchParams(location.search), hs = new URLSearchParams(location.hash.replace(/^#/, ''));
+  var state = q.get('state') || hs.get('state'), code = q.get('code'), token = hs.get('access_token'), err = q.get('error') || hs.get('error');
+  if (!state || !(code || token || err)) return;
+  try { history.replaceState(null, '', redirectUri()); } catch (e) {}
+  if (err) { toast('Anmeldung abgebrochen: ' + (q.get('error_description') || hs.get('error_description') || err), 5000); return; }
+  var pend = null; try { pend = JSON.parse(localStorage.getItem('vbtrain-auth') || 'null'); } catch (e) {}
+  var pl = { state: state, code: code, token: token, exp: hs.get('expires_in') };
+  if (pend && pend.state === state) { await cloudFinish(pend, pl); return; }
+  // Anmeldung kam in einem anderen Fenster an (z. B. Home-Bildschirm-App auf dem iPad): Code zum Einfügen anzeigen
+  var c = cloudCodeString(pl);
+  var ov = h('div', { class: 'modal' }), ta = h('textarea', { readOnly: true, style: 'min-height:70px;font-size:12px' }); ta.value = c;
+  ov.appendChild(h('div', { class: 'mbox' },
+    h('h2', { style: 'margin-top:0' }, 'Anmeldung fast fertig'),
+    h('div', { class: 'mtxt' }, 'Die Anmeldung ist in einem anderen Fenster angekommen als dem, in dem sie gestartet wurde. Code kopieren, zur VB-Training-App zurückkehren und dort unter ☰ → Einstellungen → Datenbank „Code einfügen“ tippen.'),
+    ta,
+    h('div', { class: 'mbtns', style: 'margin-top:10px' },
+      h('button', { class: 'btn', onclick: function () { ov.remove(); } }, 'Schließen'),
+      h('button', { class: 'btn pri', onclick: function () { ta.select(); try { navigator.clipboard.writeText(c).then(function () { toast('Code kopiert'); }, function () { document.execCommand('copy'); toast('Code kopiert'); }); } catch (e) { document.execCommand('copy'); } } }, 'Code kopieren'))));
+  document.body.appendChild(ov);
+}
+function cloudDisconnect() {
+  DB.kv.cloudAuth = null; markKv('cloudAuth');
+  DB.kv.cloudState = null; markKv('cloudState');
+  DB.kv.cloudLocal = {}; markKv('cloudLocal');
+  CS.status = ''; flush(); updCloudUi();
+}
+function cloudLoop() {
+  setInterval(function () { if (cloudOn() && S.cloudMode !== 'manual' && !document.hidden && CS.status !== 'auth') cloudSync(); }, 15000);
+  document.addEventListener('visibilitychange', function () {
+    if (!cloudOn() || S.cloudMode === 'manual') return;
+    if (document.hidden) { if (cloudState().dirty) cloudSync(); }
+    else cloudSync();
+  });
+  window.addEventListener('online', function () { if (cloudOn() && S.cloudMode !== 'manual') cloudSync(); });
+}
+
 (async function start() {
   try {
     idb = await idbOpen();
@@ -2681,6 +3245,11 @@ function openHelp() {
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   refreshPens(); updMenuDot();
   render(true);
+  $('#cloudInd').onclick = function () { if (cloudOn() && CS.status !== 'auth') cloudSync(true); else openSettings(); };
+  $('#cloudbar').onclick = function () { $('#cloudbar').style.display = 'none'; CS.pendingRender = false; render(); };
+  updCloudUi(); cloudLoop();
+  await cloudHandleRedirect();
+  if (cloudOn() && S.cloudMode !== 'manual') cloudSync();
 })();
 </script>
 </body>
