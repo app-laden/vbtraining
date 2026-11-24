@@ -45,6 +45,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 .exrow.var{margin-left:34px;border-left:4px solid #b8c7ee;background:#fbfcff}
 .varbtn{border:0;background:#e8eefc;color:#1d3f8f;border-radius:12px;padding:3px 10px;margin-left:8px;font-size:13px;font-weight:600;vertical-align:middle}
 .varbtn.on{background:#1f4fd1;color:#fff}
+.status.local{background:#f3eefc;color:#4b2a86}
+.btn.nodb{margin-left:auto}.btn.nodb.on{background:#6b3fb0;color:#fff;border-color:#6b3fb0}
+.card.flash{box-shadow:0 0 0 3px #6b3fb0}
 .block{background:#f8f8f5;border:1px solid #d9d9d2;border-radius:16px;padding:10px 12px;margin:16px 0}
 .step{margin-top:10px}
 .step.par{border:2px solid #7d9be0;border-radius:14px;padding:4px 8px 8px;background:#eef3fd}
@@ -216,7 +219,7 @@ input[type=range]{width:100%;height:34px}
 
 <script>
 'use strict';
-var VERSION = '0.9.24';
+var VERSION = '0.9.25';
 var $ = function (q) { return document.querySelector(q); };
 var now = function () { return performance.now(); };
 var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
@@ -1417,6 +1420,7 @@ function render(top) {
   else if (st.view === 'run') renderRun(w);
   else renderExView(w);
   layoutAll(); m.scrollTop = sy; updToolbar(); updUndo();
+  if (st.focusItem) { var fi = st.focusItem; st.focusItem = null; setTimeout(function () { var el = document.querySelector('[data-iid="' + fi + '"]'); if (el) { el.scrollIntoView({ block: 'start' }); el.classList.add('flash'); setTimeout(function () { el.classList.remove('flash'); }, 1600); } }, 60); }
 }
 function trSorted() { return Array.from(DB.tr.values()).sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''); }); }
 function trTitle(tr) { return (tr.team ? tr.team + ' · ' : '') + fmtDate(tr.date) + (tr.time ? ', ' + tr.time : '') + (tr.place ? ' · ' + tr.place : ''); }
@@ -1586,9 +1590,9 @@ function planItem(tr, b, it, ii, num) {
   var ex = it.ex;
   var onChange = function () {
     markTr(tr);
-    if (it.own && ex.goals.length) { clearTimeout(ownTimers[ex.id]); ownTimers[ex.id] = setTimeout(function () { var c = clone(ex); DB.ex.set(c.id, c); markEx(c); }, 600); }
+    if (it.own && !it.noDb && ex.goals.length) { clearTimeout(ownTimers[ex.id]); ownTimers[ex.id] = setTimeout(function () { var c = clone(ex); DB.ex.set(c.id, c); markEx(c); }, 600); }
   };
-  return exCard(ex, {
+  var cardEl = exCard(ex, {
     mode: 'plan', item: it, onChange: onChange, num: num, par: ii > 0 ? !!it.par : null,
     onPar: function () { it.par = !it.par; if (!it.par && !it.dur) it.dur = null; markTr(tr); render(); },
     onUp: function () { if (ii > 0) { swapItems(b, ii, ii - 1); markTr(tr); render(); } },
@@ -1597,15 +1601,26 @@ function planItem(tr, b, it, ii, num) {
     status: function (el) {
       el.className = 'status'; el.innerHTML = '';
       var miss = !hasDesc(ex) ? ' Beschreibung fehlt (Pflichtfeld).' : '';
+      var noDbBtn = h('button', { class: 'btn sm nodb' + (it.noDb ? ' on' : ''), title: 'Änderungen an dieser Übung nicht in die Datenbank übernehmen', onclick: async function () {
+        it.noDb = !it.noDb; markTr(tr);
+        if (it.noDb && it.own && DB.ex.has(ex.id) && await ask('Diese Übung wurde schon in der Datenbank gespeichert. Dort wieder entfernen? (Im Training bleibt sie.)', [['Behalten', 0], ['Entfernen', 1, 'warn']])) { delEx(ex.id); toast('Aus der Datenbank entfernt'); }
+        if (!it.noDb && it.own) onChange();
+        render();
+      } }, it.noDb ? '✓ Nur für dieses Training' : 'Nur für dieses Training');
+      if (it.noDb) {
+        el.classList.add('local');
+        el.appendChild(document.createTextNode(it.own ? 'Nur in diesem Training – kommt nicht in die Datenbank.' : (sig(DB.ex.get(ex.id) || {}) === sig(ex) ? 'Aus der Datenbank; Anpassungen bleiben nur in diesem Training.' : 'Für dieses Training angepasst – die Datenbank bleibt unverändert.')));
+        el.appendChild(noDbBtn); return;
+      }
       if (it.own) {
         if (!ex.goals.length) { el.classList.add('warn'); el.textContent = 'Neue Übung – sie kommt in die Datenbank, sobald sie ein Ziel hat.' + miss; }
         else { el.classList.add(miss ? 'warn' : 'ok'); el.textContent = 'Neue Übung, wird in der Datenbank gespeichert.' + miss; }
-        return;
+        el.appendChild(noDbBtn); return;
       }
       var src = DB.ex.get(ex.id);
       var act = function (lbl, f) { return h('button', { class: 'btn sm', onclick: f }, lbl); };
       if (!src) { el.classList.add('warn'); el.appendChild(document.createTextNode('Aus der Datenbank – dort inzwischen gelöscht.' + miss + ' ')); el.appendChild(act('Wieder in Datenbank speichern', function () { saveVariant(tr, it, el, true); })); return; }
-      if (sig(src) === sig(ex)) { el.classList.add('ok'); el.textContent = 'Aus der Datenbank, unverändert.' + miss; return; }
+      if (sig(src) === sig(ex)) { el.classList.add('ok'); el.textContent = 'Aus der Datenbank, unverändert.' + miss; el.appendChild(noDbBtn); return; }
       el.classList.add('chg');
       el.appendChild(document.createTextNode('Geändert gegenüber der Datenbank.' + miss));
       el.appendChild(act('In Datenbank aktualisieren', function () {
@@ -1614,8 +1629,11 @@ function planItem(tr, b, it, ii, num) {
       }));
       el.appendChild(act('Als Variante speichern …', function () { saveVariant(tr, it, el, false, false); }));
       el.appendChild(act('Als neue Übung aufnehmen …', function () { saveVariant(tr, it, el, false, true); }));
+      el.appendChild(noDbBtn);
     }
   });
+  cardEl.dataset.iid = it.iid;
+  return cardEl;
   function planItemStatusRefresh() { render(); }
   async function saveVariant(tr2, it2, el, same, asNew) {
     if (!ex.goals.length) { toast('Für die Datenbank braucht die Übung mindestens ein Ziel.'); return; }
@@ -1823,7 +1841,8 @@ function renderRun(w) {
 function runItem(tr, it, num) {
   var ex = it.ex, card = h('div', { class: 'card' });
   var pl = players(ex);
-  card.appendChild(h('div', { class: 'row' }, num ? h('span', { class: 'num' }, num) : null, h('b', { style: 'font-size:18px;flex:1;min-width:160px' }, exLabel(ex)),
+  card.appendChild(h('div', { class: 'row' }, num ? h('span', { class: 'num' }, num) : null, h('b', { style: 'font-size:18px;flex:1;min-width:160px' }, exLabel(ex), it.noDb ? h('span', { class: 'badge', style: 'background:#6b3fb0' }, 'nur dieses Training') : null),
+    h('button', { class: 'btn sm', title: 'Diese Übung für das Training anpassen', onclick: function () { st.focusItem = it.iid; go('plan', { trId: tr.id }); } }, '✎ Anpassen'),
     it.field ? h('span', { class: 'field' }, 'Feld ' + it.field) : null,
     pl ? h('span', { class: 'muted' }, pl + ' Spieler' + (ex.pmode === 'pos' && posSum(ex.pos) ? ' (' + posText(ex.pos) + ')' : '')) : null));
   if (ex.goals.length || ex.phases.length) card.appendChild(h('div', { style: 'margin-top:4px' }, phaseChips(ex), ex.goals.map(function (g) { return h('span', { class: 'chip' }, g); })));
@@ -2758,6 +2777,7 @@ function openHelp() {
     '<li><b>Trainingsphase</b> (optional): Aufwärmen, Einspielen, Grundtechnik, Taktik, Komplex oder Spiel. In der Übungsliste lässt sich danach filtern.</li>' +
     '<li>„+ Neue Übung“ legt eine Übung an. Sobald sie ein <b>Ziel</b> hat, landet sie automatisch in der Übungsdatenbank.</li>' +
     '<li>„+ Aus Datenbank“ übernimmt eine Übung. Wird sie geändert, bietet die Karte an: „In Datenbank aktualisieren“ (ersetzt die Übung), „Als Variante speichern …“ (zusätzliche Fassung mit Bezeichnung, z. B. „für 12 Spieler“; erscheint als „Titel – für 12 Spieler“) oder „Als neue Übung aufnehmen …“ (eigenständige Übung). Ohne Klick bleibt die Änderung nur in diesem Training. Dasselbe gibt es im Reiter Übungen beim Bearbeiten.</li>' +
+    '<li><b>Nur für dieses Training:</b> Knopf in der Statuszeile jeder Übung. Dann bleiben Änderungen nur im Training; neue Übungen kommen nicht in die Datenbank. Zum kurzfristigen Anpassen beim Durchführen: „✎ Anpassen“ an der Übung springt direkt zu ihr in die Planung.</li>' +
     '<li><b>Varianten in der Liste:</b> Varianten stehen eingeklappt unter ihrer Ursprungsübung; dort zeigt <b>⑂ 3 Varianten ▾</b>, dass es welche gibt – antippen klappt sie auf (zum Ansehen oder Auswählen). „⑂ Varianten zeigen“ neben der Suche klappt alle auf.</li>' +
     '<li><b>Organisatorisches / Vorab</b> (unter den Positionen, optional): Knopf aufklappen, dann Textfeld und/oder Handschriftfeld anlegen – für Punkte, die vor dem Training angesprochen werden. Erscheint beim Durchführen oben und im PDF; beim Kopieren eines Trainings wird es nicht übernommen.</li>' +
     '<li>Oben im Training: optional das <b>Team</b> (wird gelernt, Auswahl über ▾) und die <b>Ziele des Trainings</b>.</li>' +
